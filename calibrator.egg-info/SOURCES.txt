@@ -13,7 +13,6 @@ calibrator/metrics/__init__.py
 calibrator/metrics/adaptiveece.py
 calibrator/metrics/classwiseece.py
 calibrator/metrics/ece.py
-tests/test_ets.py
 tests/test_local_calibrator.py
 tests/test_metrics.py
 tests/test_ts.py
