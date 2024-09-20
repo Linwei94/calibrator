@@ -46,8 +46,8 @@ class TemperatureScaling(nn.Module):
         for i in range(100):
             self.temperature = T
             self.cuda()
-            after_temperature_nll = nll_criterion(self.calibrate(logits), labels).item()
-            after_temperature_ece = ece_criterion(self.calibrate(logits), labels).item()
+            after_temperature_nll = nll_criterion(self.calibrate(logits), labels)
+            after_temperature_ece = ece_criterion(self.calibrate(logits), labels)
             if nll_val > after_temperature_nll:
                 T_opt_nll = T
                 nll_val = after_temperature_nll

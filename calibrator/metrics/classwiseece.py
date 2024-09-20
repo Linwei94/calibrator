@@ -39,4 +39,4 @@ class ClasswiseECE(nn.Module):
                 per_class_sce = torch.cat((per_class_sce, class_sce), dim=0)
 
         sce = torch.mean(per_class_sce)
-        return sce
+        return sce.item()

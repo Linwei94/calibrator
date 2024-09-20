@@ -40,13 +40,13 @@ class LocalCalibrator(Calibrator):
             calibrated_probability = self.calibrate(val_logits, eps=eps)
             loss = criterion(labels=val_labels, softmaxes=calibrated_probability)
             if verbose:
-                print('Epsilon: {}, {}: {}'.format(eps, search_criteria, loss.item()))
+                print('Epsilon: {}, {}: {}'.format(eps, search_criteria, loss))
             if self.eps is None or loss < min_loss:
                 self.eps = eps
                 min_loss = loss
         if verbose:
             print('--'*20)
-            print('Optimal epsilon: {}, {}: {}'.format(self.eps, search_criteria, min_loss.item()))
+            print('Optimal epsilon: {}, {}: {}'.format(self.eps, search_criteria, min_loss))
         return self.eps
 
     def calibrate(self, test_logits, eps=None):
