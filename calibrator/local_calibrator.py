@@ -2,10 +2,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-from .metrics import ECELoss
+from .calibrator import Calibrator
+from .metrics import ECE
 
 # Calibration error scores in the form of loss metrics
-class LocalCalibrator(nn.Module):
+class LocalCalibrator(Calibrator):
     def __init__(self, aggregation='consistency', num_samples=1000, noise_type='gaussian'):
         super(LocalCalibrator, self).__init__()
         '''
@@ -24,12 +25,12 @@ class LocalCalibrator(nn.Module):
         self.noise_type = noise_type
         self.eps = None # optimal epsilon value
 
-    def search_optimal_epsilon(self, val_logits, val_labels, search_criteria='ece', verbose=False):
+    def fit(self, val_logits, val_labels, search_criteria='ece', verbose=False):
         '''
         Search the optimal epsilon value for the calibration on validation set and set the optimal epsilon value to self.eps
         '''
         if search_criteria == 'ece':
-            criterion = ECELoss().cuda()
+            criterion = ECE().cuda()
         elif search_criteria == 'nll':
             criterion = nn.NLLLoss()
 
@@ -91,6 +92,9 @@ class LocalCalibrator(nn.Module):
             return softmaxes_mode_counts / self.num_samples
         elif self.aggregation == 'mean':
             return softmax_sum / self.num_samples
+
+    def get_eps(self):
+        return self.eps
 
 if __name__ == '__main__':
     # todo: add test code
