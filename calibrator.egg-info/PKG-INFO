@@ -1,0 +1,16 @@
+Metadata-Version: 2.1
+Name: calibrator
+Version: 0.0.2
+Summary: A package for calibration on deep learning models for classification tasks.
+Author-email: Linwei Tao <dylan.tao94@gmail.com>
+Project-URL: Homepage, https://github.com/pypa/sampleproject
+Project-URL: Issues, https://github.com/pypa/sampleproject/issues
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+
+# calibration
+a package for calibrating the deep learning models

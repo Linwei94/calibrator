@@ -1,0 +1,18 @@
+[project]
+name = "calibrator"
+version = "0.0.2"
+authors = [
+  { name="Linwei Tao", email="dylan.tao94@gmail.com" },
+]
+description = "A package for calibration on deep learning models for classification tasks."
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+Homepage = "https://github.com/pypa/sampleproject"
+Issues = "https://github.com/pypa/sampleproject/issues"
