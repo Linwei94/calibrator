@@ -12,7 +12,7 @@ class ClasswiseECE(nn.Module):
         self.bin_lowers = bin_boundaries[:-1]
         self.bin_uppers = bin_boundaries[1:]
 
-    def forward(self, logits, labels, softmaxes=None, confidences=None, predictions=None):
+    def forward(self, logits=None, labels=None, softmaxes=None, confidences=None, predictions=None):
         if softmaxes is None:
             softmaxes = F.softmax(logits, dim=1)
         if confidences is None:
@@ -22,7 +22,7 @@ class ClasswiseECE(nn.Module):
 
         for i in range(num_classes):
             class_confidences = softmaxes[:, i]
-            class_sce = torch.zeros(1, device=logits.device)
+            class_sce = torch.zeros(1, device=labels.device)
             labels_in_class = labels.eq(i) # one-hot vector of all positions where the label belongs to the class i
 
             for bin_lower, bin_upper in zip(self.bin_lowers, self.bin_uppers):

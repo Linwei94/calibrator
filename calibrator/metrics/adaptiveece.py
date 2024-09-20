@@ -17,7 +17,7 @@ class AdaptiveECE(nn.Module):
         return np.interp(np.linspace(0, npt, self.nbins + 1),
                      np.arange(npt),
                      np.sort(x))
-    def forward(self, logits, labels, softmaxes=None, confidences=None, predictions=None):
+    def forward(self, logits=None, labels=None, softmaxes=None, confidences=None, predictions=None):
         if softmaxes is None:
             softmaxes = F.softmax(logits, dim=1)
         if confidences is None:
@@ -27,7 +27,7 @@ class AdaptiveECE(nn.Module):
         #print(n,confidences,bin_boundaries)
         self.bin_lowers = bin_boundaries[:-1]
         self.bin_uppers = bin_boundaries[1:]
-        ece = torch.zeros(1, device=logits.device)
+        ece = torch.zeros(1, device=labels.device)
         for bin_lower, bin_upper in zip(self.bin_lowers, self.bin_uppers):
             # Calculated |confidence - accuracy| in each bin
             in_bin = confidences.gt(bin_lower.item()) * confidences.le(bin_upper.item())
