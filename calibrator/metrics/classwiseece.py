@@ -13,6 +13,19 @@ class ClasswiseECE(nn.Module):
         self.bin_uppers = bin_boundaries[1:]
 
     def forward(self, logits=None, labels=None, softmaxes=None):
+        '''
+        args:
+            logits: torch.Tensor
+                The logits to calibrate, the output of the model before softmax layer
+            labels: torch.Tensor
+                The labels of the test data
+            softmaxes: torch.Tensor
+                The softmaxes of the test data, if None, compute the softmaxes from logits, if both softmaxes provided, use softmaxes
+
+        Returns:
+            sce: float
+                The Classwise ECE value
+        '''
         if softmaxes is None:
             softmaxes = F.softmax(logits, dim=1)
         confidences, predictions = torch.max(softmaxes, 1)

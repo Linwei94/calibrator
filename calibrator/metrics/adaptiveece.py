@@ -18,6 +18,19 @@ class AdaptiveECE(nn.Module):
                      np.arange(npt),
                      np.sort(x))
     def forward(self, logits=None, labels=None, softmaxes=None):
+        '''
+        args:
+            logits: torch.Tensor
+                The logits to calibrate, the output of the model before softmax layer
+            labels: torch.Tensor
+                The labels of the test data
+            softmaxes: torch.Tensor
+                The softmaxes of the test data, if None, compute the softmaxes from logits, if both softmaxes provided, use softmaxes
+
+        Returns:
+            adaptive_ece: float
+                The Adaptive ECE value
+        '''
         if softmaxes is None:
             softmaxes = F.softmax(logits, dim=1)
         confidences, predictions = torch.max(softmaxes, 1)
