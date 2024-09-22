@@ -14,3 +14,58 @@ calibrator = LocalCalibrator(aggregation='consistency', num_samples=1000, noise_
 eps_opt = calibrator.search_optimal_epsilon(val_logits, val_labels, verbose=True)
 calibrated_probability = calibrator.calibrate(test_logits)
 ```
+
+## Benchmarking
+| Datasets | Method | Method Description | ECE | ACE | MCE | CECE | PIECE |
+| ------------------ | ----------- | ---------- | ---------- |  -------- | ---------- |  -------- | ---------- |
+| CIFAR-10 |   |   |   |   |   |   |
+| CIFAR-100 |   |   |   |   |   |   |
+| ImageNet-1K |   |   |   |   |   |   |
+
+## Package Information
+### Post-Hoc Calibration methods
+| Calibration methods | Description | Paper | Source Code | Status |
+| ------------------ | ----------- | ---------- | ---------- | -------- |
+| Temperature Scaling (TS) | ICML 2017 | [paper](https://arxiv.org/abs/1706.04599) | [code](https://github.com/gpleiss/temperature_scaling/blob/master/temperature_scaling.py) | ✅ Implemented |
+| Parameterized Temperature Scaling (PTS) | ECCV 2022 | [paper](https://arxiv.org/abs/2102.12182) | [ code](https://github.com/tochris/pts-uncertainty) | 🔜 Pending |
+| Ensemble Temperature Scaling (ETS) | ICML 2020 | [paper](https://proceedings.mlr.press/v119/zhang20k.html) | [code](https://github.com/yashchandra/ensemble-calibration) | 🔜 Pending |
+| Class-based Temperature Scaling (CTS) | EUSIPCO 2021 | [paper](https://ieeexplore.ieee.org/document/9616219) | unavailable | 🔜 Pending |
+| Group Calibration with Temperature Scaling (GCTS)| NeurIPS 2023 | [paper](https://arxiv.org/abs/2306.04985) | [code](https://github.com/ThyrixYang/group_calibration) | 🔜 Pending |
+| Proximity-informed Calibration (PROCAL) | NeurIPS 2023 | [paper](https://arxiv.org/abs/2306.04590) | [code](https://github.com/MiaoXiong2320/ProximityBias-Calibration) | 🔜 Pending |
+
+
+### Train-time Calibration Methods
+| Calibration Losses | Description | Paper | Source Code | Status |
+| ------------------ | ----------- | ---------- | ---------- | -------- |
+| Focal Loss |   |   |   |   |
+| Dual Focal Loss |   |   |   |   |
+
+
+
+### Calibration Metrics
+| Calibration Metrics | Description | Paper | Source Code | Status |
+| ------------------ | ----------- | ---------- | ---------- | -------- |
+| Expected Calibration Error (ECE) | AAAI 2015 | [paper](https://ojs.aaai.org/index.php/AAAI/article/view/9602) | [code](https://github.com/torrvision/focal_calibration/blob/main/Metrics/metrics.py) | ✅ Implemented |
+| Maximum Calibration Error (MCE) | AAAI 2015 | [paper](https://ojs.aaai.org/index.php/AAAI/article/view/9602) | [code](https://github.com/torrvision/focal_calibration/blob/main/Metrics/metrics.py) | 🔜 Pending |
+| Adaptive Calibration Error (ACE) | CVPRW 2019 | [paper](https://openaccess.thecvf.com/content_CVPRW_2019/papers/Uncertainty%20and%20Robustness%20in%20Deep%20Visual%20Learning/Nixon_Measuring_Calibration_in_Deep_Learning_CVPRW_2019_paper.pdf) | [code](https://github.com/torrvision/focal_calibration/blob/main/Metrics/metrics.py) | ✅ Implemented |
+| Classwise Expected Calibration Error (CECE) | NeurIPS 2019 | [paper](https://arxiv.org/abs/1910.12656) | [code](https://github.com/torrvision/focal_calibration/blob/main/Metrics/metrics.py) | ✅ Implemented |
+| Proximity-informed Expected Calibration Error (PIECE) | NeurIPS 2023 | [paper](https://arxiv.org/abs/2306.04590) | [code](https://github.com/MiaoXiong2320/ProximityBias-Calibration) | 🔜 Pending |
+
+### Pre-trained Model Weights
+| Datasets | Description | Paper | Source Code | Status |
+| ------------------ | ----------- | ---------- | ---------- | -------- |
+| CIFAR-10 |   |   |   |   |
+| CIFAR-100 |   |   |   |   |
+| ImageNet |   |   |   |   |
+| ImageNet-100 |   |   |   |   |
+| ImageNet-1000 |   |   |   |   |
+
+### Pre-calculated Logits
+| Datasets | Description | Paper | Source Code | Status |
+| ------------------ | ----------- | ---------- | ---------- | -------- |
+| CIFAR-10 |   |   |   |   |
+| CIFAR-100 |   |   |   |   |
+| ImageNet |   |   |   |   |
+| ImageNet-100 |   |   |   |   |
+| ImageNet-1000 |   |   |   |   |
+
