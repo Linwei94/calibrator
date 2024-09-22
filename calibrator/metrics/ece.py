@@ -13,11 +13,10 @@ class ECE(nn.Module):
         self.bin_lowers = bin_boundaries[:-1]
         self.bin_uppers = bin_boundaries[1:]
 
-    def forward(self, logits=None, labels=None, softmaxes=None, confidences=None, predictions=None):
+    def forward(self, logits=None, labels=None, softmaxes=None):
         if (softmaxes is None) and (confidences is None):
             softmaxes = F.softmax(logits, dim=1)
-        if confidences is None:
-            confidences, predictions = torch.max(softmaxes, 1)
+        confidences, predictions = torch.max(softmaxes, 1)
         accuracies = predictions.eq(labels)
 
         ece = torch.zeros(1, device=labels.device)

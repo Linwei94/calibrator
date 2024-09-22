@@ -17,11 +17,10 @@ class AdaptiveECE(nn.Module):
         return np.interp(np.linspace(0, npt, self.nbins + 1),
                      np.arange(npt),
                      np.sort(x))
-    def forward(self, logits=None, labels=None, softmaxes=None, confidences=None, predictions=None):
+    def forward(self, logits=None, labels=None, softmaxes=None):
         if softmaxes is None:
             softmaxes = F.softmax(logits, dim=1)
-        if confidences is None:
-            confidences, predictions = torch.max(softmaxes, 1)
+        confidences, predictions = torch.max(softmaxes, 1)
         accuracies = predictions.eq(labels)
         n, bin_boundaries = np.histogram(confidences.cpu().detach(), self.histedges_equalN(confidences.cpu().detach()))
         #print(n,confidences,bin_boundaries)

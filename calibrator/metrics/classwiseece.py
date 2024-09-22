@@ -12,11 +12,10 @@ class ClasswiseECE(nn.Module):
         self.bin_lowers = bin_boundaries[:-1]
         self.bin_uppers = bin_boundaries[1:]
 
-    def forward(self, logits=None, labels=None, softmaxes=None, confidences=None, predictions=None):
+    def forward(self, logits=None, labels=None, softmaxes=None):
         if softmaxes is None:
             softmaxes = F.softmax(logits, dim=1)
-        if confidences is None:
-            confidences, predictions = torch.max(softmaxes, 1)
+        confidences, predictions = torch.max(softmaxes, 1)
         num_classes = int((torch.max(labels) + 1).item())
         per_class_sce = None
 
