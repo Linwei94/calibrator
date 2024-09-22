@@ -1,1 +1,3 @@
 __pycache__
+pretrained_wegihts/*
+test_logits/*

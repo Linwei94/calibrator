@@ -12,7 +12,7 @@ def test_local_calibrator():
     eps_opt = calibrator.fit(val_logits, val_labels)
     calibrated_probability = calibrator.calibrate(test_logits)
 
-    print("pass")
+    print("!!! Pass LocalCalibrator Test !!!")
 
 if __name__ == "__main__":
     test_local_calibrator()

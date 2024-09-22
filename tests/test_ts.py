@@ -33,7 +33,7 @@ def test_ts():
 
     print(ECE().cuda()(logits=test_logits, labels=test_labels))
     print(ECE().cuda()(logits=calibrated_logits, labels=test_labels))
-    print("pass")
+    print("!!! Pass Temperature Scaling Test !!!")
 
 if __name__ == "__main__":
     test_ts()
