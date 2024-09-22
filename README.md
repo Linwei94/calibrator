@@ -50,13 +50,15 @@ calibrated_probability = calibrator.calibrate(test_logits)
 
 
 
-### Calibration Metrics
-| Calibration Metrics | Description | Paper | Source Code | Status |
+### Metrics
+| Metrics | Description | Paper | Source Code | Status |
 | ------------------ | ----------- | ---------- | ---------- | -------- |
 | Expected Calibration Error (ECE) | AAAI 2015 | [paper](https://ojs.aaai.org/index.php/AAAI/article/view/9602) | [code](https://github.com/torrvision/focal_calibration/blob/main/Metrics/metrics.py) | ✅ Implemented |
 | Maximum Calibration Error (MCE) | AAAI 2015 | [paper](https://ojs.aaai.org/index.php/AAAI/article/view/9602) | [code](https://github.com/torrvision/focal_calibration/blob/main/Metrics/metrics.py) | 🔜 Pending |
 | Adaptive Calibration Error (ACE) | CVPRW 2019 | [paper](https://openaccess.thecvf.com/content_CVPRW_2019/papers/Uncertainty%20and%20Robustness%20in%20Deep%20Visual%20Learning/Nixon_Measuring_Calibration_in_Deep_Learning_CVPRW_2019_paper.pdf) | [code](https://github.com/torrvision/focal_calibration/blob/main/Metrics/metrics.py) | ✅ Implemented |
 | Classwise Expected Calibration Error (CECE) | NeurIPS 2019 | [paper](https://arxiv.org/abs/1910.12656) | [code](https://github.com/torrvision/focal_calibration/blob/main/Metrics/metrics.py) | ✅ Implemented |
+| Negative Log Likelihood (NLL) |   |   |   |   |
+| Accuracy |   |   |   |   |
 | Proximity-informed Expected Calibration Error (PIECE) | NeurIPS 2023 | [paper](https://arxiv.org/abs/2306.04590) | [code](https://github.com/MiaoXiong2320/ProximityBias-Calibration) | 🔜 Pending |
 
 ### Pre-trained Model Weights
