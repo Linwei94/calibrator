@@ -27,7 +27,7 @@ class ECE(nn.Module):
             ece: float
                 The ECE value
         '''
-        if (softmaxes is None) and (confidences is None):
+        if softmaxes is None:
             softmaxes = F.softmax(logits, dim=1)
         confidences, predictions = torch.max(softmaxes, 1)
         accuracies = predictions.eq(labels)
