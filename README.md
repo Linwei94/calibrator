@@ -11,7 +11,7 @@ val_labels = torch.randint(0, 10, (1000,))
 test_logits = torch.randn(1000, 10)
 
 calibrator = LocalCalibrator(aggregation='consistency', num_samples=1000, noise_type='gaussian')
-eps_opt = calibrator.search_optimal_epsilon(val_logits, val_labels, verbose=True)
+eps_opt = calibrator.fit(val_logits, val_labels, verbose=True)
 calibrated_probability = calibrator.calibrate(test_logits)
 ```
 
@@ -32,6 +32,13 @@ calibrated_probability = calibrator.calibrate(test_logits)
 | Class-based Temperature Scaling (CTS) | EUSIPCO 2021 | [paper](https://ieeexplore.ieee.org/document/9616219) | unavailable | 🔜 Pending |
 | Group Calibration with Temperature Scaling (GCTS)| NeurIPS 2023 | [paper](https://arxiv.org/abs/2306.04985) | [code](https://github.com/ThyrixYang/group_calibration) | 🔜 Pending |
 | Proximity-informed Calibration (PROCAL) | NeurIPS 2023 | [paper](https://arxiv.org/abs/2306.04590) | [code](https://github.com/MiaoXiong2320/ProximityBias-Calibration) | 🔜 Pending |
+| Isotonic Regression |   |   |   |   |
+| Histogram Binning |   |   |   |   |
+| Platt Scaling |   |   |   |   |
+| BBQ |   |   |   |   |
+| BetaCal |   |   |   |   |
+| Scaling-Binning Calibrator | NeuIPS 2019 | [paper](https://arxiv.org/pdf/1909.10155) | [code](https://pypi.org/project/uncertainty-calibration/) | 🔜 Pending |
+
 
 
 ### Train-time Calibration Methods
@@ -39,6 +46,7 @@ calibrated_probability = calibrator.calibrate(test_logits)
 | ------------------ | ----------- | ---------- | ---------- | -------- |
 | Focal Loss |   |   |   |   |
 | Dual Focal Loss |   |   |   |   |
+| Adaptive Focal Loss |   |   |   |   |
 
 
 
