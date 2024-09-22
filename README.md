@@ -35,10 +35,10 @@ calibrated_probability = calibrator.calibrate(test_logits)
 | Isotonic Regression |   |   |   |   |
 | Histogram Binning |   |   |   |   |
 | Platt Scaling |   |   |   |   |
-| BBQ |   |   |   |   |
+| Bayesian Binning into Quantiles (BBQ) | AAAI 2015 | [paper](https://ojs.aaai.org/index.php/AAAI/article/view/9602) |  | 🔜 Pending |
 | BetaCal |   |   |   |   |
 | Scaling-Binning Calibrator | NeuIPS 2019 | [paper](https://arxiv.org/pdf/1909.10155) | [code](https://pypi.org/project/uncertainty-calibration/) | 🔜 Pending |
-
+| Dirichlet calibration |  NeurIPS 2019 |  [paper](https://arxiv.org/abs/1910.12656) | [code](https://github.com/dirichletcal/experiments_neurips) | 🔜 Pending |
 
 
 ### Train-time Calibration Methods
