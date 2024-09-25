@@ -1,3 +1,5 @@
+from calibrator.metrics import ECE
+
 def test_local_calibrator():
     print("---Test LocalCalibrator---")
 
@@ -12,6 +14,9 @@ def test_local_calibrator():
     eps_opt = calibrator.fit(val_logits, val_labels)
     calibrated_probability = calibrator.calibrate(test_logits)
 
+    print(f"eps_opt: {eps_opt:.4f}")
+    print(f"Uncalibrated ECE: {ECE()(labels=test_labels, logits=test_logits):.4f}")
+    print(f"Calibrated ECE: {ECE()(labels=test_labels, softmaxes=calibrated_probability):.4f}")
     print("!!! Pass LocalCalibrator Test !!!")
 
 if __name__ == "__main__":

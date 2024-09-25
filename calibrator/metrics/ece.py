@@ -8,6 +8,11 @@ class ECE(nn.Module):
     Compute ECE (Expected Calibration Error)
     '''
     def __init__(self, n_bins=15):
+        '''
+        Args:
+            n_bins: int
+                The number of bins to use for the calibration
+        '''
         super(ECE, self).__init__()
         bin_boundaries = torch.linspace(0, 1, n_bins + 1)
         self.bin_lowers = bin_boundaries[:-1]
