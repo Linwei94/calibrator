@@ -1,5 +1,11 @@
 # Calibration
-a package for calibrating the deep learning models
+a python package for calibrating the deep learning models
+
+## Install
+```sh
+pip install calibrator
+```
+
 
 ## Use case
 ```python
