@@ -40,7 +40,6 @@ class LocalCalibrator(Calibrator):
 
         min_loss = float('inf')
         if search_method == 'grid_search':
-            print(self.noise_type, self.aggregation)
             eps_search_space = np.linspace(0, 10, 100)
             for eps in eps_search_space:
                 calibrated_probability = self.calibrate(val_logits, eps=eps)
@@ -52,7 +51,6 @@ class LocalCalibrator(Calibrator):
                     min_loss = loss
 
         elif search_method == 'fine_grained':
-            print(self.noise_type, self.aggregation)
             fine_granularity = 20 # the search space is divided by 2^fine_granularity times
             fine_granularity_level = 3 # the search space is divided by 10^fine_granularity_level times
             eps_search_space = np.linspace(0, 10, fine_granularity)
