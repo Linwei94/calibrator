@@ -7,7 +7,7 @@ from .metrics import ECE
 
 # Calibration error scores in the form of loss metrics
 class LocalCalibrator(Calibrator):
-    def __init__(self, aggregation='consistency', num_samples=1000, noise_type='gaussian'):
+    def __init__(self, aggregation='consistency', num_samples=1000, noise_type=None):
         super(LocalCalibrator, self).__init__()
         '''
         aggregation: str
@@ -21,18 +21,43 @@ class LocalCalibrator(Calibrator):
         '''
 
         assert aggregation in ['consistency', 'mean'], "Invalid aggregation method"
-        assert noise_type in ['gaussian', 'uniform'], "Invalid noise type"
         assert num_samples > 0, "Invalid number of samples"
+        if noise_type:
+            print("Warning: The 'noise_type' parameter is deprecated and will be removed in future versions. LocalCalibrator will search both Gaussian and Uniform noise and set the noise type in fit function.")
+
 
         self.num_samples = num_samples
         self.aggregation = aggregation
-        self.noise_type = noise_type
         self.eps = None # optimal epsilon value
 
-    def fit(self, val_logits, val_labels, search_criteria='ece', verbose=False, search_method='fine_grained'):
+    def fit(self, val_logits, val_labels, search_criteria='ece', verbose=False, search_method='fine_grained', return_loss=False):
+        '''
+        Search the optimal epsilon value for the calibration on validation set and set the optimal epsilon value to self.eps, will search both Gaussian and Uniform noise and set the noise type
+        '''
+        g_eps, g_loss = self._fit(val_logits, val_labels, search_criteria, verbose, search_method, noise_type='gaussian')
+        u_eps, u_loss = self._fit(val_logits, val_labels, search_criteria, verbose, search_method, noise_type='uniform')
+
+        if g_loss < u_loss:
+            self.noise_type = 'gaussian'
+            self.eps = g_eps
+            min_loss = g_loss
+        else:
+            self.noise_type = 'uniform'
+            self.eps = u_eps
+            min_loss = u_loss
+
+        if return_loss:
+            return self.eps, min_loss
+        else:
+            return self.eps
+
+
+    def _fit(self, val_logits, val_labels, search_criteria='ece', verbose=False, search_method='fine_grained', noise_type='guassian'):
         '''
         Search the optimal epsilon value for the calibration on validation set and set the optimal epsilon value to self.eps
         '''
+        self._noise_type = noise_type
+
         if search_criteria == 'ece':
             criterion = ECE().cuda()
         elif search_criteria == 'nll':
@@ -77,7 +102,7 @@ class LocalCalibrator(Calibrator):
         if verbose:
             print('--'*20)
             print('Optimal epsilon: {}, {}: {}'.format(self.eps, search_criteria, min_loss))
-        return self.eps
+        return self.eps, min_loss
 
     def calibrate(self, test_logits, eps=None):
         '''
@@ -103,9 +128,9 @@ class LocalCalibrator(Calibrator):
 
         for i in range(self.num_samples):
             # set noise
-            if self.noise_type == 'gaussian':
+            if self._noise_type == 'gaussian':
                 noise = torch.randn_like(test_logits) * eps
-            elif self.noise_type == 'uniform':
+            elif self._noise_type == 'uniform':
                 noise.uniform_(-eps, eps)
 
             logits = (test_logits + noise).to(device)
