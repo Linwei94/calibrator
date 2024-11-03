@@ -1,69 +1,102 @@
-'''
-Code to perform temperature scaling. Adapted from https://github.com/gpleiss/temperature_scaling
-'''
 import torch
-import numpy as np
 from torch import nn, optim
 from torch.nn import functional as F
 
-from .metrics import ECE
 
-class TemperatureScaling(nn.Module):
+class TemperatureScaler(nn.Module):
     def __init__(self):
-        super(TemperatureScaling, self).__init__()
-        self.temperature = 1.0
+        super(TemperatureScaler, self).__init__()
+        self.temperature = nn.Parameter(torch.ones(1))
 
-    def fit(self, model, valid_loader, search_criteria='ece', verbose=False):
-        '''
-        Search the optimal temperature value for the calibration on validation set and set the optimal temperature value to self.temperature
-        model: nn.Module, the model to be calibrated
-        valid_loader: torch.utils.data.DataLoader, the validation data loader
-        search_criteria: str, 'ece' or 'nll'
-        verbose: bool, whether to print the search process
-        '''
-        self.cuda()
-        model.eval()
-        nll_criterion = nn.CrossEntropyLoss().cuda()
-        ece_criterion = ECE().cuda()
-
-        # First: collect all the logits and labels for the validation set
-        logits_list = []
-        labels_list = []
-        with torch.no_grad():
-            for input, label in valid_loader:
-                input = input.cuda()
-                logits = model(input)
-                logits_list.append(logits)
-                labels_list.append(label)
-            logits = torch.cat(logits_list).cuda()
-            labels = torch.cat(labels_list).cuda()
-
-        nll_val = 10 ** 7
-        ece_val = 10 ** 7
-        T_opt_nll = 1.0
-        T_opt_ece = 1.0
-        T = 0.1
-        for i in range(100):
-            self.temperature = T
-            self.cuda()
-            after_temperature_nll = nll_criterion(self.calibrate(logits), labels)
-            after_temperature_ece = ece_criterion(self.calibrate(logits), labels)
-            if nll_val > after_temperature_nll:
-                T_opt_nll = T
-                nll_val = after_temperature_nll
-
-            if ece_val > after_temperature_ece:
-                T_opt_ece = T
-                ece_val = after_temperature_ece
-            T += 0.1
-
-        if search_criteria == 'ece':
-            self.temperature = T_opt_ece
-        else:
-            self.temperature = T_opt_nll
-        self.cuda()
-
-        return self.temperature
+    def forward(self, logits):
+        return self.temperature_scale(logits)
 
     def calibrate(self, logits):
-        return logits / self.temperature
+        return self.temperature_scale(logits)
+
+    def temperature_scale(self, logits):
+        """
+        Perform temperature scaling on logits
+        """
+        temperature = self.temperature.unsqueeze(1).expand(logits.size(0), logits.size(1))
+        return logits / temperature
+
+    # This function probably should live outside of this class, but whatever
+    def fit(self, logits, labels):
+        """
+        Tune the tempearature of the model (using the validation set).
+        We're going to set it to optimize NLL.
+        valid_loader (DataLoader): validation set loader
+        """
+        self.cuda()
+        nll_criterion = nn.CrossEntropyLoss().cuda()
+        ece_criterion = _ECELoss().cuda()
+
+        # Calculate NLL and ECE before temperature scaling
+        before_temperature_nll = nll_criterion(logits, labels).item()
+        before_temperature_ece = ece_criterion(logits, labels).item()
+        print('Before temperature - NLL: %.3f, ECE: %.3f' % (before_temperature_nll, before_temperature_ece))
+
+        # Next: optimize the temperature w.r.t. NLL
+        optimizer = optim.LBFGS([self.temperature], lr=0.01, max_iter=1000)
+
+        def eval():
+            optimizer.zero_grad()
+            loss = nll_criterion(self.temperature_scale(logits), labels)
+            loss.backward()
+            return loss
+        optimizer.step(eval)
+
+        # Calculate NLL and ECE after temperature scaling
+        after_temperature_nll = nll_criterion(self.temperature_scale(logits), labels).item()
+        after_temperature_ece = ece_criterion(self.temperature_scale(logits), labels).item()
+        print('Optimal temperature: %.3f' % self.temperature.item())
+        print('After temperature - NLL: %.3f, ECE: %.3f' % (after_temperature_nll, after_temperature_ece))
+
+        return self
+
+
+class _ECELoss(nn.Module):
+    """
+    Calculates the Expected Calibration Error of a model.
+    (This isn't necessary for temperature scaling, just a cool metric).
+
+    The input to this loss is the logits of a model, NOT the softmax scores.
+
+    This divides the confidence outputs into equally-sized interval bins.
+    In each bin, we compute the confidence gap:
+
+    bin_gap = | avg_confidence_in_bin - accuracy_in_bin |
+
+    We then return a weighted average of the gaps, based on the number
+    of samples in each bin
+
+    See: Naeini, Mahdi Pakdaman, Gregory F. Cooper, and Milos Hauskrecht.
+    "Obtaining Well Calibrated Probabilities Using Bayesian Binning." AAAI.
+    2015.
+    """
+    def __init__(self, n_bins=15):
+        """
+        n_bins (int): number of confidence interval bins
+        """
+        super(_ECELoss, self).__init__()
+        bin_boundaries = torch.linspace(0, 1, n_bins + 1)
+        self.bin_lowers = bin_boundaries[:-1]
+        self.bin_uppers = bin_boundaries[1:]
+
+    def forward(self, logits, labels):
+        softmaxes = F.softmax(logits, dim=1)
+        confidences, predictions = torch.max(softmaxes, 1)
+        accuracies = predictions.eq(labels)
+
+        ece = torch.zeros(1, device=logits.device)
+        for bin_lower, bin_upper in zip(self.bin_lowers, self.bin_uppers):
+            # Calculated |confidence - accuracy| in each bin
+            in_bin = confidences.gt(bin_lower.item()) * confidences.le(bin_upper.item())
+            prop_in_bin = in_bin.float().mean()
+            if prop_in_bin.item() > 0:
+                accuracy_in_bin = accuracies[in_bin].float().mean()
+                avg_confidence_in_bin = confidences[in_bin].mean()
+                ece += torch.abs(avg_confidence_in_bin - accuracy_in_bin) * prop_in_bin
+
+        return ece
