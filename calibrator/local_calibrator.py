@@ -56,7 +56,6 @@ class LocalCalibrator(Calibrator):
         '''
         Search the optimal epsilon value for the calibration on validation set and set the optimal epsilon value to self.eps
         '''
-        self._noise_type = noise_type
 
         if search_criteria == 'ece':
             criterion = ECE().cuda()
@@ -67,7 +66,7 @@ class LocalCalibrator(Calibrator):
         if search_method == 'grid_search':
             eps_search_space = np.linspace(0, 10, 100)
             for eps in eps_search_space:
-                calibrated_probability = self.calibrate(val_logits, eps=eps)
+                calibrated_probability = self.calibrate(val_logits, eps=eps, noise_type=noise_type)
                 loss = criterion(labels=val_labels, softmaxes=calibrated_probability)
                 if verbose:
                     print('Epsilon: {}, {}: {}'.format(eps, search_criteria, loss))
@@ -80,7 +79,7 @@ class LocalCalibrator(Calibrator):
             fine_granularity_level = 3 # the search space is divided by 10^fine_granularity_level times
             eps_search_space = np.linspace(0, 10, fine_granularity)
             for eps in eps_search_space:
-                calibrated_probability = self.calibrate(val_logits, eps=eps)
+                calibrated_probability = self.calibrate(val_logits, eps=eps, noise_type=noise_type)
                 loss = criterion(labels=val_labels, softmaxes=calibrated_probability)
                 if verbose:
                     print('Epsilon: {}, {}: {}'.format(eps, search_criteria, loss))
@@ -91,7 +90,7 @@ class LocalCalibrator(Calibrator):
             for i in range(fine_granularity_level):
                 eps_search_space = np.linspace(self.eps - 1/10**i, self.eps + 1/10**i, fine_granularity)
                 for eps in eps_search_space:
-                    calibrated_probability = self.calibrate(val_logits, eps=eps)
+                    calibrated_probability = self.calibrate(val_logits, eps=eps, noise_type=noise_type)
                     loss = criterion(labels=val_labels, softmaxes=calibrated_probability)
                     if verbose:
                         print('Epsilon: {}, {}: {}'.format(eps, search_criteria, loss))
@@ -104,12 +103,14 @@ class LocalCalibrator(Calibrator):
             print('Optimal epsilon: {}, {}: {}'.format(self.eps, search_criteria, min_loss))
         return self.eps, min_loss
 
-    def calibrate(self, test_logits, eps=None):
+    def calibrate(self, test_logits, eps=None, noise_type=None):
         '''
         test_logits: torch.Tensor
             The logits to calibrate, the output of the model before softmax layer
         eps: float
             The epsilon value for noise, if None, use the self.eps value
+        noise_type: str
+            The type of noise to use, if None, use the self._noise_type value
 
         Returns:
         calibrated_probability: torch.Tensor
@@ -118,6 +119,8 @@ class LocalCalibrator(Calibrator):
         '''
         if eps is None:
             eps = self.eps
+        if noise_type is None:
+            noise_type = self.noise_type
 
         device = test_logits.device
         num_samples = test_logits.size(0)
@@ -125,13 +128,15 @@ class LocalCalibrator(Calibrator):
         softmaxes_mode_counts = torch.zeros(num_samples, num_classes, dtype=torch.int32).to(device)
         softmax_sum = torch.zeros(num_samples, num_classes).to(device)
         noise = torch.zeros_like(test_logits, device=device)
+        # eps = (test_logits.max(dim=-1)[0] / 0.85).unsqueeze(1).expand_as(test_logits)
 
         for i in range(self.num_samples):
             # set noise
-            if self._noise_type == 'gaussian':
+            if noise_type == 'gaussian':
                 noise = torch.randn_like(test_logits) * eps
-            elif self._noise_type == 'uniform':
-                noise.uniform_(-eps, eps)
+            elif noise_type == 'uniform':
+                # noise.uniform_(-eps, eps)
+                noise = torch.rand_like(test_logits) * eps
 
             logits = (test_logits + noise).to(device)
 
@@ -150,6 +155,9 @@ class LocalCalibrator(Calibrator):
 
     def get_eps(self):
         return self.eps
+
+    def get_noise_type(self):
+        return self.noise_type
 
 if __name__ == '__main__':
     # todo: add test code
