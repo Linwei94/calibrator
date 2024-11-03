@@ -1,6 +1,6 @@
 [project]
 name = "calibrator"
-version = "0.0.10"
+version = "0.0.11"
 authors = [
   { name="Linwei Tao", email="dylan.tao94@gmail.com" },
 ]
