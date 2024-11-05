@@ -6,7 +6,7 @@ import numpy as np
 from torch import nn, optim
 from torch.nn import functional as F
 
-from .metrics import ECE
+from .metrics import ECE, Accuracy
 from .calibrator import Calibrator
 
 class LogitClippingCalibrator(Calibrator):
@@ -40,22 +40,25 @@ class LogitClippingCalibrator(Calibrator):
         """
         nll_criterion = nn.CrossEntropyLoss().cuda()
         ece_criterion = ECE().cuda()
+        accuracy_criterion = Accuracy().cuda()
+        before_clipping_acc = accuracy_criterion(val_logits, val_labels)
 
         nll_val = 10 ** 7
         ece_val = 10 ** 7
         C_opt_nll = float("inf")
         C_opt_ece = float("inf")
-        C = 0.01
+        C = max(torch.quantile(val_logits, 0.80).item(), 0.01)
         for _ in range(1000):
             self.logit_clip = C
             self.cuda()
             after_clipping_nll = nll_criterion(self.logit_clipping(val_logits), val_labels)
             after_clipping_ece = ece_criterion(self.logit_clipping(val_logits), val_labels)
-            if nll_val > after_clipping_nll:
+            after_clipping_acc = accuracy_criterion(self.logit_clipping(val_logits), val_labels)
+            if (nll_val > after_clipping_nll) and (after_clipping_acc > before_clipping_acc*0.95):
                 C_opt_nll = C
                 nll_val = after_clipping_nll
 
-            if ece_val > after_clipping_ece:
+            if (ece_val > after_clipping_ece) and (after_clipping_acc > before_clipping_acc*0.95):
                 C_opt_ece = C
                 ece_val = after_clipping_ece
             C += 0.01
