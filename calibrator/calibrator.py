@@ -8,11 +8,15 @@ class Calibrator(nn.Module):
         pass
 
     @abstractmethod
-    def fit(self, **kwargs):
+    def fit(self, val_logits, val_labels, **kwargs):
+        '''
+        Fit the calibrator on the validation set and return the optimal hyperparameter value
+        '''
         pass
 
     @abstractmethod
-    def calibrate(self, test_logits, **kwargs):
+    def calibrate(self, test_logits, return_logits=False, **kwargs):
+        '''
+        Calibrate the logits and return the calibrated probabilities or logits
+        '''
         pass
-    
-    

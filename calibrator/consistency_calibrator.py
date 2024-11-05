@@ -6,9 +6,9 @@ from .calibrator import Calibrator
 from .metrics import ECE
 
 # Calibration error scores in the form of loss metrics
-class LocalCalibrator(Calibrator):
+class ConsistencyCalibrator(Calibrator):
     def __init__(self, aggregation='consistency', num_samples=1000, noise_type=None):
-        super(LocalCalibrator, self).__init__()
+        super(ConsistencyCalibrator, self).__init__()
         '''
         aggregation: str
             The aggregation method to use. Options are 'consistency' and 'mean'.
@@ -23,7 +23,7 @@ class LocalCalibrator(Calibrator):
         assert aggregation in ['consistency', 'mean'], "Invalid aggregation method"
         assert num_samples > 0, "Invalid number of samples"
         if noise_type:
-            print("Warning: The 'noise_type' parameter is deprecated and will be removed in future versions. LocalCalibrator will search both Gaussian and Uniform noise and set the noise type in fit function.")
+            print("Warning: The 'noise_type' parameter is deprecated and will be removed in future versions. ConsistencyCalibrator will search both Gaussian and Uniform noise and set the noise type in fit function.")
 
 
         self.num_samples = num_samples
@@ -103,7 +103,7 @@ class LocalCalibrator(Calibrator):
             print('Optimal epsilon: {}, {}: {}'.format(self.eps, search_criteria, min_loss))
         return self.eps, min_loss
 
-    def calibrate(self, test_logits, eps=None, noise_type=None):
+    def calibrate(self, test_logits, eps=None, noise_type=None, return_logits=False):
         '''
         test_logits: torch.Tensor
             The logits to calibrate, the output of the model before softmax layer
@@ -111,12 +111,16 @@ class LocalCalibrator(Calibrator):
             The epsilon value for noise, if None, use the self.eps value
         noise_type: str
             The type of noise to use, if None, use the self._noise_type value
+        return_logits: bool
+            Whether to return the logits or the probabilities, cannot be True
 
         Returns:
         calibrated_probability: torch.Tensor
             The calibrated probability of the prediction
             Note that this method can only output probabilities (similar to softmax), not logits
         '''
+        assert not return_logits, "ConsistencyCalibrator cannot return logits"
+
         if eps is None:
             eps = self.eps
         if noise_type is None:
