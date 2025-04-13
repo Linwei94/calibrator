@@ -7,9 +7,19 @@ def test_pts_calibrator():
     import torch
     import numpy as np
 
+    # Check if CUDA is available
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"Using device: {device}")
+
     # Load validation and test data
     val_logits, val_labels = torch.load("tests/test_logits/resnet50_cifar10_cross_entropy_val_0.1_vanilla.pt", weights_only=False)
     test_logits, test_labels = torch.load("tests/test_logits/resnet50_cifar10_cross_entropy_test_0.9_vanilla.pt", weights_only=False)
+
+    # Move data to the appropriate device
+    val_logits = val_logits.to(device)
+    val_labels = val_labels.to(device)
+    test_logits = test_logits.to(device)
+    test_labels = test_labels.to(device)
 
     # Get the number of classes from the logits shape
     num_classes = val_logits.shape[1]
@@ -65,13 +75,16 @@ def test_pts_calibrator():
         # Load the saved model
         new_calibrator.load(temp_dir)
         
+        # Move the new calibrator to the same device
+        new_calibrator.to(device)
+        
         # Calibrate with the loaded model
         loaded_calibrated_probability = new_calibrator.calibrate(test_logits)
         
         # Verify that the loaded model produces the same results
         np.testing.assert_array_almost_equal(
-            calibrated_probability, 
-            loaded_calibrated_probability, 
+            calibrated_probability.cpu().numpy(), 
+            loaded_calibrated_probability.cpu().numpy(), 
             decimal=5, 
             err_msg="Loaded model should produce the same calibration results"
         )
@@ -80,10 +93,10 @@ def test_pts_calibrator():
     calibrated_logits = calibrator.calibrate(test_logits, return_logits=True)
     
     # Verify that the returned logits can be converted to the same probabilities
-    manual_calibrated_probs = torch.nn.functional.softmax(torch.tensor(calibrated_logits), dim=1).numpy()
+    manual_calibrated_probs = torch.nn.functional.softmax(calibrated_logits, dim=1)
     np.testing.assert_array_almost_equal(
-        calibrated_probability, 
-        manual_calibrated_probs, 
+        calibrated_probability.cpu().numpy(), 
+        manual_calibrated_probs.cpu().numpy(), 
         decimal=5, 
         err_msg="Manual softmax of returned logits should match calibrated probabilities"
     )

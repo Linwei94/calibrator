@@ -83,8 +83,8 @@ class PTSCalibrator(Calibrator):
         
         Args:
             val_logits (np.array or torch.Tensor): shape (N, length_logits)
-            val_labels (np.array or torch.Tensor): shape (N, length_logits)
-                (Using MSE loss, so labels are typically one-hot encoded probability distributions)
+            val_labels (np.array or torch.Tensor): shape (N,) - class indices
+                or shape (N, length_logits) - one-hot encoded vectors
             **kwargs: Optional additional parameters
                 - clip (float): Clipping threshold for logits, defaults to 1e2
         """
@@ -96,9 +96,21 @@ class PTSCalibrator(Calibrator):
         if not torch.is_tensor(val_labels):
             val_labels = torch.tensor(val_labels, dtype=torch.float32)
         
+        # Move tensors to CUDA if available
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        val_logits = val_logits.to(device)
+        val_labels = val_labels.to(device)
+        self.to(device)  # Move model to the same device
+        
         # Check input dimensions
         assert val_logits.size(1) == self.length_logits, "Logits length must match length_logits!"
-        assert val_labels.size(1) == self.length_logits, "Labels length must match length_logits!"
+        
+        # Convert class indices to one-hot encoded vectors if needed
+        if len(val_labels.shape) == 1:
+            # Create one-hot encoded vectors from class indices
+            one_hot_labels = torch.zeros(val_labels.size(0), self.length_logits, dtype=torch.float32, device=device)
+            one_hot_labels.scatter_(1, val_labels.unsqueeze(1), 1)
+            val_labels = one_hot_labels
         
         # Clip logits
         val_logits = torch.clamp(val_logits, min=-clip, max=clip)
@@ -134,13 +146,17 @@ class PTSCalibrator(Calibrator):
             **kwargs: Optional additional parameters
                 - clip (float): Clipping threshold, defaults to 1e2
         Return:
-            If return_logits is False, returns calibrated probability distribution (np.array)
-            If return_logits is True, returns calibrated logits (np.array)
+            If return_logits is False, returns calibrated probability distribution (torch.Tensor)
+            If return_logits is True, returns calibrated logits (torch.Tensor)
         """
         clip = kwargs.get('clip', 1e2)
         
         if not torch.is_tensor(test_logits):
             test_logits = torch.tensor(test_logits, dtype=torch.float32)
+        
+        # Move tensor to the same device as the model
+        device = next(self.parameters()).device
+        test_logits = test_logits.to(device)
         
         assert test_logits.size(1) == self.length_logits, "Logits length must match length_logits!"
         test_logits = torch.clamp(test_logits, min=-clip, max=clip)
@@ -150,8 +166,8 @@ class PTSCalibrator(Calibrator):
             calibrated_probs, calibrated_logits = self.forward(test_logits)
             
         if return_logits:
-            return calibrated_logits.cpu().numpy()
-        return calibrated_probs.cpu().numpy()
+            return calibrated_logits
+        return calibrated_probs
     
     def save(self, path="./"):
         """
@@ -168,5 +184,5 @@ class PTSCalibrator(Calibrator):
         Load PTS model parameters
         """
         load_path = os.path.join(path, "pts_model.pth")
-        self.load_state_dict(torch.load(load_path, map_location=torch.device('cpu')))
+        self.load_state_dict(torch.load(load_path, map_location=torch.device('cpu'), weights_only=True))
         print("Load PTS model from:", load_path)
