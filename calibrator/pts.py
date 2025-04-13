@@ -32,8 +32,24 @@ class PTSCalibrator(Calibrator):
         self.n_nodes = n_nodes
         self.length_logits = length_logits
         self.top_k_logits = top_k_logits
-        self.loss_fn = loss_fn if loss_fn is not None else nn.MSELoss()
+        # self.loss_fn = loss_fn if loss_fn is not None else nn.MSELoss()
 
+        if loss_fn is None:
+            self.loss_fn = nn.MSELoss()
+        elif isinstance(loss_fn, str):
+            loss_fn_lower = loss_fn.lower()
+            if loss_fn_lower in {"mse", "mean_squared_error"}:
+                self.loss_fn = nn.MSELoss()
+            elif loss_fn_lower in {"crossentropy", "cross_entropy", "ce"}:
+                self.loss_fn = nn.CrossEntropyLoss()
+            elif loss_fn_lower in {"l1", "l1loss", "mean_absolute_error"}:
+                self.loss_fn = nn.L1Loss()
+            else:
+                raise ValueError(f"Unsupported loss function: {loss_fn}")
+        else:
+            # If loss_fn is a callable, then use it directly.
+            self.loss_fn = loss_fn
+        
         # Build parameterized temperature branch: input is top k sorted logits
         layers = []
         input_dim = top_k_logits
