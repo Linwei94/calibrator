@@ -4,16 +4,17 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import TensorDataset, DataLoader
 import numpy as np
+from tqdm import tqdm, trange
 from calibrator.calibrator import Calibrator
 
 class PTSCalibrator(Calibrator):
     """
     PyTorch implementation of Parameterized Temperature Scaling (PTS)
     """
-    def __init__(self, epochs=100000, lr=0.00005, weight_decay=0.0, batch_size=1000, nlayers=2, n_nodes=5, length_logits=None, top_k_logits=10, loss_fn=None):
+    def __init__(self, steps=100000, lr=0.00005, weight_decay=0.0, batch_size=1000, nlayers=2, n_nodes=5, length_logits=None, top_k_logits=10, loss_fn=None):
         """
         Args:
-            epochs (int): Number of epochs for PTS model tuning, default 100000 as per paper
+            steps (int): Number of optimization steps for PTS model tuning, default 100000 as per paper
             lr (float): Learning rate, default 0.00005 as per paper
             weight_decay (float): Weight decay coefficient (L2 regularization), default 0.0
             batch_size (int): Batch size for training, default 1000 as per paper
@@ -24,7 +25,7 @@ class PTSCalibrator(Calibrator):
             loss_fn (callable): Custom loss function, defaults to MSE if None
         """
         super(PTSCalibrator, self).__init__()
-        self.epochs = epochs
+        self.steps = steps
         self.lr = lr
         self.weight_decay = weight_decay
         self.batch_size = batch_size
@@ -105,8 +106,10 @@ class PTSCalibrator(Calibrator):
                 or shape (N, length_logits) - one-hot encoded vectors
             **kwargs: Optional additional parameters
                 - clip (float): Clipping threshold for logits, defaults to 1e2
+                - verbose (bool): Whether to display progress bars, defaults to True
         """
         clip = kwargs.get('clip', 1e2)
+        verbose = kwargs.get('verbose', True)
         
         # Set length_logits if not already set
         if self.length_logits is None:
@@ -145,19 +148,45 @@ class PTSCalibrator(Calibrator):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.lr, weight_decay=self.weight_decay)
         
         self.train()
-        for epoch in range(self.epochs):
+        step_count = 0
+        epochs = 0
+        
+        # Create progress bar for steps
+        pbar = trange(self.steps, desc="Training PTS", disable=not verbose)
+        
+        while step_count < self.steps:
             epoch_loss = 0.0
-            for batch_logits, batch_labels in dataloader:
+            # Use tqdm for the dataloader if verbose
+            epoch_loader = tqdm(dataloader, desc=f"Epoch {epochs+1}", 
+                                leave=False, disable=not verbose)
+            
+            for batch_logits, batch_labels in epoch_loader:
+                if step_count >= self.steps:
+                    break
+                    
                 optimizer.zero_grad()
                 outputs, _ = self.forward(batch_logits)
                 loss = self.loss_fn(outputs, batch_labels)
                 loss.backward()
                 optimizer.step()
                 epoch_loss += loss.item() * batch_logits.size(0)
-            epoch_loss /= len(dataset)
-            if (epoch + 1) % 1000 == 0:  # Print every 1000 epochs
-                print(f"Epoch {epoch + 1}/{self.epochs}, Loss: {epoch_loss:.4f}")
-    
+                step_count += 1
+                
+                # Update the main progress bar
+                pbar.update(1)
+                pbar.set_postfix({"loss": f"{loss.item():.4f}"})
+                
+                if step_count >= self.steps:
+                    break
+            
+            epochs += 1
+            avg_loss = epoch_loss / len(dataset)
+            if verbose and epochs % 10 == 0:
+                print(f"Completed epoch {epochs}, Average Loss: {avg_loss:.4f}, Steps: {step_count}/{self.steps}")
+        
+        # Close the progress bar
+        pbar.close()
+
     def calibrate(self, test_logits, return_logits=False, **kwargs):
         """
         Calibrate logits using the trained PTS model
