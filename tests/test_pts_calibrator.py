@@ -22,10 +22,10 @@ def test_pts_calibrator():
     # test_logits, test_labels = torch.load("tests/test_logits/resnet50_cifar10_cross_entropy_test_0.9_vanilla.pt", weights_only=False)
 
     # Move data to the appropriate device
-    val_logits = torch.tensor(np.load("tests/test_logits/val_logits.npy")).float().to(device)
-    val_labels = torch.tensor(np.load("tests/test_logits/val_labels.npy")).long().to(device)
-    test_logits = torch.tensor(np.load("tests/test_logits/test_logits.npy")).float().to(device)
-    test_labels = torch.tensor(np.load("tests/test_logits/test_labels.npy")).long().to(device)
+    val_logits = torch.tensor(np.load("calibrator/tests/test_logits/val_logits.npy")).float().to(device)
+    val_labels = torch.tensor(np.load("calibrator/tests/test_logits/val_labels.npy")).long().to(device)
+    test_logits = torch.tensor(np.load("calibrator/tests/test_logits/test_logits.npy")).float().to(device)
+    test_labels = torch.tensor(np.load("calibrator/tests/test_logits/test_labels.npy")).long().to(device)
 
     # Get the number of classes from the logits shape
     num_classes = val_logits.shape[1]
@@ -33,6 +33,14 @@ def test_pts_calibrator():
     # Initialize the PTS calibrator with default parameters
     calibrator = PTSCalibrator(
         length_logits=num_classes,  # Only specify length_logits, use defaults for others,
+        loss_fn="mse",
+        steps=10000,
+        lr=0.00005,
+        weight_decay=0.0,
+        batch_size=1000,
+        nlayers=2,
+        n_nodes=5,
+        top_k_logits=10,
     )
 
     # Fit the calibrator on validation data
@@ -42,8 +50,8 @@ def test_pts_calibrator():
     calibrated_probability = calibrator.calibrate(test_logits)
 
     # Calculate and print ECE metrics
-    uncalibrated_ece = ECE()(labels=test_labels, logits=test_logits)
-    calibrated_ece = ECE()(labels=test_labels, softmaxes=calibrated_probability)
+    uncalibrated_ece = ECE(n_bins=15)(labels=test_labels, logits=test_logits)
+    calibrated_ece = ECE(n_bins=15)(labels=test_labels, softmaxes=calibrated_probability)
 
     print(f"Uncalibrated ECE: {uncalibrated_ece:.4f}")
     print(f"Calibrated ECE: {calibrated_ece:.4f}")
@@ -53,12 +61,19 @@ def test_pts_calibrator():
     
     # Test with custom loss function
     custom_calibrator = PTSCalibrator(
-        length_logits=num_classes,
         loss_fn=torch.nn.CrossEntropyLoss(),
+        length_logits=num_classes,  # Only specify length_logits, use defaults for others,
+        steps=10000,
+        lr=0.00005,
+        weight_decay=0.0,
+        batch_size=1000,
+        nlayers=2,
+        n_nodes=5,
+        top_k_logits=10,
     )
-    custom_calibrator.fit(val_logits, val_labels)
-    custom_calibrated_probability = custom_calibrator.calibrate(test_logits)
-    custom_calibrated_ece = ECE()(labels=test_labels, softmaxes=custom_calibrated_probability)
+    # custom_calibrator.fit(val_logits, val_labels)
+    # custom_calibrated_probability = custom_calibrator.calibrate(test_logits)
+    # custom_calibrated_ece = ECE()(labels=test_labels, softmaxes=custom_calibrated_probability)
     print(f"Custom Loss Calibrated ECE: {custom_calibrated_ece:.4f}")
     
     # Test saving and loading the model

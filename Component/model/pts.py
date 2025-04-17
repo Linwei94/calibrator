@@ -5,13 +5,14 @@ import torch.nn.functional as F
 from torch.utils.data import TensorDataset, DataLoader
 import numpy as np
 from tqdm import tqdm, trange
-from Component.model.calibrator import Calibrator
+import random
+from .calibrator import Calibrator
 
 class PTSCalibrator(Calibrator):
     """
     PyTorch implementation of Parameterized Temperature Scaling (PTS)
     """
-    def __init__(self, steps=100000, lr=0.00005, weight_decay=0.0, batch_size=1000, nlayers=2, n_nodes=5, length_logits=None, top_k_logits=10, loss_fn=None):
+    def __init__(self, steps=100000, lr=0.00005, weight_decay=0.0, batch_size=1000, nlayers=2, n_nodes=5, length_logits=None, top_k_logits=10, loss_fn=None, seed=42):
         """
         Args:
             steps (int): Number of optimization steps for PTS model tuning, default 100000 as per paper
@@ -23,6 +24,7 @@ class PTSCalibrator(Calibrator):
             length_logits (int): Length of input logits, will be set during fit if None
             top_k_logits (int): Number of top k elements to use from sorted logits, default 10 as per paper
             loss_fn (callable): Custom loss function, defaults to MSE if None
+            seed (int): Random seed for reproducibility, default 42
         """
         super(PTSCalibrator, self).__init__()
         self.steps = steps
@@ -33,6 +35,11 @@ class PTSCalibrator(Calibrator):
         self.n_nodes = n_nodes
         self.length_logits = length_logits
         self.top_k_logits = top_k_logits
+        self.seed = seed
+        
+        # Set random seeds for reproducibility
+        self._set_seed(seed)
+        
         # self.loss_fn = loss_fn if loss_fn is not None else nn.MSELoss()
 
         if loss_fn is None:
@@ -69,8 +76,30 @@ class PTSCalibrator(Calibrator):
             layers.append(nn.Linear(input_dim, 1))
         self.temp_branch = nn.Sequential(*layers)
         
+        # Initialize weights with fixed seed
+        self._init_weights()
+        
         # Note: Since PyTorch's weight decay is set in the optimizer,
         # we don't need to specify regularization in each fully connected layer
+    
+    def _set_seed(self, seed):
+        """Set random seeds for reproducibility"""
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed(seed)
+            torch.cuda.manual_seed_all(seed)
+            torch.backends.cudnn.deterministic = True
+            torch.backends.cudnn.benchmark = False
+    
+    def _init_weights(self):
+        """Initialize weights with fixed seed"""
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
 
     def forward(self, input_logits):
         """
@@ -107,9 +136,14 @@ class PTSCalibrator(Calibrator):
             **kwargs: Optional additional parameters
                 - clip (float): Clipping threshold for logits, defaults to 1e2
                 - verbose (bool): Whether to display progress bars, defaults to True
+                - seed (int): Random seed for reproducibility, defaults to the one set in __init__
         """
         clip = kwargs.get('clip', 1e2)
         verbose = kwargs.get('verbose', True)
+        seed = kwargs.get('seed', self.seed)
+        
+        # Set random seeds for reproducibility
+        self._set_seed(seed)
         
         # Set length_logits if not already set
         if self.length_logits is None:
@@ -140,9 +174,10 @@ class PTSCalibrator(Calibrator):
         # Clip logits
         val_logits = torch.clamp(val_logits, min=-clip, max=clip)
         
-        # Create DataLoader
+        # Create DataLoader with fixed seed for shuffling
         dataset = TensorDataset(val_logits, val_labels)
-        dataloader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
+        generator = torch.Generator().manual_seed(seed)
+        dataloader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True, generator=generator)
         
         # Define optimizer (weight_decay implements L2 regularization)
         optimizer = torch.optim.Adam(self.parameters(), lr=self.lr, weight_decay=self.weight_decay)

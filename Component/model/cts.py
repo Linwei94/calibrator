@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
 import numpy as np
-from Component.model.calibrator import Calibrator
-from Component.metrics import ECE, Accuracy
+from .calibrator import Calibrator
+from ..metrics import ECE, Accuracy
 
 class CTSCalibrator(Calibrator):
     """
@@ -27,7 +27,6 @@ class CTSCalibrator(Calibrator):
         # Initialize metrics
         self.ece_metric = ECE(n_bins=n_bins)
         self.accuracy_metric = Accuracy()
-
     def forward(self, x):
         """
         Forward pass: scales the input logits x by dividing each column (class score) 

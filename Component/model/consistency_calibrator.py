@@ -2,8 +2,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+import random
 from .calibrator import Calibrator
-from Component.metrics import ECE
+from ..metrics import ECE
 
 # Calibration error scores in the form of loss metrics
 class ConsistencyCalibrator(Calibrator):
