@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 from .calibrator import Calibrator
-from .metrics import ECE
+from Component.metrics import ECE
 
 # Calibration error scores in the form of loss metrics
 class ConsistencyCalibrator(Calibrator):

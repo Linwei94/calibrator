@@ -1,10 +1,16 @@
-from calibrator.metrics import ECE
+import os
+import sys
+
+# Add the parent directory to the path so we can import the Component module
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from Component.metrics import ECE
 
 def test_consistency_calibrator():
     print("---Test Consistency Calibrator---")
 
 
-    from calibrator import ConsistencyCalibrator
+    from Component import ConsistencyCalibrator
     import torch
 
     val_logits, val_labels = torch.load("tests/test_logits/resnet50_cifar10_cross_entropy_val_0.1_vanilla.pt", weights_only=False)
