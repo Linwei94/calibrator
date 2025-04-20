@@ -27,6 +27,12 @@ def test_pts_calibrator():
     test_logits = torch.tensor(np.load("calibrator/tests/test_logits/test_logits.npy")).float().to(device)
     test_labels = torch.tensor(np.load("calibrator/tests/test_logits/test_labels.npy")).long().to(device)
 
+    # Move data to the appropriate device
+    val_logits = val_logits.to(device)
+    val_labels = val_labels.to(device)
+    test_logits = test_logits.to(device)
+    test_labels = test_labels.to(device)
+
     # Get the number of classes from the logits shape
     num_classes = val_logits.shape[1]
 
