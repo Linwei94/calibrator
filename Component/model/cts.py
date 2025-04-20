@@ -52,6 +52,8 @@ class CTSCalibrator(Calibrator):
             val_labels (torch.Tensor): Validation labels of shape (N,)
             **kwargs: Additional arguments
                 - grid (np.array): Temperature grid to search over, defaults to np.arange(0.1, 10.1, 0.1)
+                - ts_loss (str): Loss function to use for temperature scaling initialization, defaults to 'nll'
+                  Options: 'nll', 'ece', 'brier', 'mmce', 'ls'
                 
         Returns:
             np.array: Optimized temperature vector of shape (n_class,)
@@ -67,24 +69,40 @@ class CTSCalibrator(Calibrator):
             
         # Get temperature grid from kwargs or use default
         grid = kwargs.get('grid', np.arange(0.1, 10.1, 0.1)) 
-        '''
-        optimal temperature can
-        be found by a grid search over values between 0 and 10, with a
-        step of 0.1, and finding the one that minimizes the validation set
-        ECE. The grid search is done for each class separately, and the
-        '''
         
-        # Start with the current temperatures
-        current_T = self.T.detach().cpu().numpy().copy()  # shape: (n_class,)
+        # Step 1: Initialize all temperature parameters using traditional temperature scaling
+        print("Initializing temperature parameters using traditional temperature scaling...")
         
-        # Compute initial probabilities, accuracy, and ECE using current_T
+        # Create a temporary temperature scaling calibrator
+        from .temperature_scaling import TemperatureScalingCalibrator
+        ts_loss = kwargs.get('ts_loss', 'nll')
+        print(f"Using {ts_loss} loss for temperature scaling initialization")
+        ts_calibrator = TemperatureScalingCalibrator(loss_type=ts_loss)
+        
+        # Move to the same device as val_logits
+        device = val_logits.device
+        ts_calibrator.to(device)
+        
+        # Ensure val_logits and val_labels are on the same device as ts_calibrator
+        val_logits_ts = val_logits.to(device)
+        val_labels_ts = val_labels.to(device)
+        
+        # Fit the traditional temperature scaling
+        ts_temp = ts_calibrator.fit(val_logits_ts, val_labels_ts)
+        print(f"Traditional temperature scaling found temperature: {ts_temp:.4f}")
+        
+        # Initialize all class temperatures with the same value from TS
+        current_T = np.ones(self.n_class) * ts_temp
+        
+        # Compute initial probabilities, accuracy, and ECE using TS-initialized temperatures
         scaled_logits = val_logits / torch.tensor(current_T, device=val_logits.device)
         probs = torch.nn.functional.softmax(scaled_logits, dim=1)
         base_acc = self.accuracy_metric(softmaxes=probs, labels=val_labels)
         base_ece = self.ece_metric(softmaxes=probs, labels=val_labels)
-        print(f"Initial: Accuracy = {base_acc:.4f}, ECE = {base_ece:.4f}")
+        print(f"After TS initialization: Accuracy = {base_acc:.4f}, ECE = {base_ece:.4f}")
         
-        # Greedy optimization loop
+        # Step 2: Greedy optimization loop
+        print("\nStarting greedy optimization for class-specific temperatures...")
         for iteration in range(self.n_iter):
             updated = False
             print(f"\nIteration {iteration + 1}:")

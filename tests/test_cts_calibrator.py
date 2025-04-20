@@ -13,9 +13,10 @@ def test_cts_calibrator():
     import torch
     import numpy as np
 
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     # Load validation and test data
-    val_logits, val_labels = torch.load("tests/test_logits/resnet50_cifar10_cross_entropy_val_0.1_vanilla.pt", weights_only=False)
-    test_logits, test_labels = torch.load("tests/test_logits/resnet50_cifar10_cross_entropy_test_0.9_vanilla.pt", weights_only=False)
+    val_logits, val_labels = torch.load("calibrator/tests/test_logits/resnet50_cifar10_cross_entropy_val_0.1_vanilla.pt", weights_only=False)
+    test_logits, test_labels = torch.load("calibrator/tests/test_logits/resnet50_cifar10_cross_entropy_test_0.9_vanilla.pt", weights_only=False)
     
     # Ensure all tensors are on CPU
     val_logits = val_logits.cpu()

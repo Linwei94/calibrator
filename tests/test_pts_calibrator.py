@@ -71,6 +71,7 @@ def test_pts_calibrator():
         n_nodes=5,
         top_k_logits=10,
     )
+    
     # custom_calibrator.fit(val_logits, val_labels)
     # custom_calibrated_probability = custom_calibrator.calibrate(test_logits)
     # custom_calibrated_ece = ECE()(labels=test_labels, softmaxes=custom_calibrated_probability)
