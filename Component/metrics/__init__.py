@@ -3,3 +3,9 @@ from .adaptiveece import AdaptiveECE
 from .classwiseece import ClasswiseECE
 from .nll import NLL
 from .accuracy import Accuracy
+from .brier import BrierLoss
+from .focal import FocalLoss
+from .label_smoothing import LabelSmoothingLoss
+from .cross_entropy import CrossEntropyLoss
+from .mse import MSELoss
+from .soft_ece import SoftECE

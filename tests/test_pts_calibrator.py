@@ -33,7 +33,7 @@ def test_pts_calibrator():
     # Initialize the PTS calibrator with default parameters
     calibrator = PTSCalibrator(
         length_logits=num_classes,  # Only specify length_logits, use defaults for others,
-        loss_fn="mse",
+        loss_fn="brier",
         steps=10000,
         lr=0.00005,
         weight_decay=0.0,

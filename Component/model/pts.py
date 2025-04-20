@@ -7,6 +7,10 @@ import numpy as np
 from tqdm import tqdm, trange
 import random
 from .calibrator import Calibrator
+from ..metrics import (
+    BrierLoss, FocalLoss, LabelSmoothingLoss, 
+    CrossEntropyLoss, MSELoss, SoftECE
+)
 
 class PTSCalibrator(Calibrator):
     """
@@ -23,7 +27,15 @@ class PTSCalibrator(Calibrator):
             n_nodes (int): Number of nodes in each hidden layer, default 5 as per paper
             length_logits (int): Length of input logits, will be set during fit if None
             top_k_logits (int): Number of top k elements to use from sorted logits, default 10 as per paper
-            loss_fn (callable): Custom loss function, defaults to MSE if None
+            loss_fn (str or callable): Loss function to use, options:
+                - 'mse' or 'mean_squared_error': Mean Squared Error
+                - 'ce' or 'cross_entropy': Cross Entropy
+                - 'soft_ece': Soft Expected Calibration Error
+                - 'brier': Brier Score
+                - 'l1' or 'mean_absolute_error': L1 Loss
+                - 'focal': Focal Loss (with gamma=2.0 by default)
+                - 'label_smoothing': Label Smoothing (with alpha=0.1 by default)
+                - Any callable function that takes (outputs, targets) as arguments
             seed (int): Random seed for reproducibility, default 42
         """
         super(PTSCalibrator, self).__init__()
@@ -40,23 +52,9 @@ class PTSCalibrator(Calibrator):
         # Set random seeds for reproducibility
         self._set_seed(seed)
         
-        # self.loss_fn = loss_fn if loss_fn is not None else nn.MSELoss()
-
-        if loss_fn is None:
-            self.loss_fn = nn.MSELoss()
-        elif isinstance(loss_fn, str):
-            loss_fn_lower = loss_fn.lower()
-            if loss_fn_lower in {"mse", "mean_squared_error"}:
-                self.loss_fn = nn.MSELoss()
-            elif loss_fn_lower in {"crossentropy", "cross_entropy", "ce"}:
-                self.loss_fn = nn.CrossEntropyLoss()
-            elif loss_fn_lower in {"l1", "l1loss", "mean_absolute_error"}:
-                self.loss_fn = nn.L1Loss()
-            else:
-                raise ValueError(f"Unsupported loss function: {loss_fn}")
-        else:
-            # If loss_fn is a callable, then use it directly.
-            self.loss_fn = loss_fn
+        # Set loss function
+        self.loss_fn_type = loss_fn if isinstance(loss_fn, str) else None
+        self.loss_fn = self._get_loss_function(loss_fn)
         
         # Build parameterized temperature branch: input is top k sorted logits
         layers = []
@@ -81,6 +79,40 @@ class PTSCalibrator(Calibrator):
         
         # Note: Since PyTorch's weight decay is set in the optimizer,
         # we don't need to specify regularization in each fully connected layer
+    
+    def _get_loss_function(self, loss_fn):
+        """
+        Get the appropriate loss function based on the input.
+        
+        Args:
+            loss_fn (str or callable): Loss function specification
+            
+        Returns:
+            callable: Loss function
+        """
+        if loss_fn is None:
+            return MSELoss()
+        elif isinstance(loss_fn, str):
+            loss_fn_lower = loss_fn.lower()
+            if loss_fn_lower in {"mse", "mean_squared_error"}:
+                return MSELoss()
+            elif loss_fn_lower in {"crossentropy", "cross_entropy", "ce"}:
+                return CrossEntropyLoss()
+            elif loss_fn_lower in {"l1", "l1loss", "mean_absolute_error"}:
+                return nn.L1Loss()
+            elif loss_fn_lower in {"soft_ece", "softece"}:
+                return SoftECE()
+            elif loss_fn_lower in {"brier", "brier_score"}:
+                return BrierLoss()
+            elif loss_fn_lower in {"focal", "focal_loss"}:
+                return FocalLoss()
+            elif loss_fn_lower in {"label_smoothing", "ls"}:
+                return LabelSmoothingLoss()
+            else:
+                raise ValueError(f"Unsupported loss function: {loss_fn}")
+        else:
+            # If loss_fn is a callable, then use it directly.
+            return loss_fn
     
     def _set_seed(self, seed):
         """Set random seeds for reproducibility"""
@@ -137,10 +169,14 @@ class PTSCalibrator(Calibrator):
                 - clip (float): Clipping threshold for logits, defaults to 1e2
                 - verbose (bool): Whether to display progress bars, defaults to True
                 - seed (int): Random seed for reproducibility, defaults to the one set in __init__
+                - focal_gamma (float): Gamma parameter for focal loss, defaults to 2.0
+                - label_smoothing_alpha (float): Alpha parameter for label smoothing, defaults to 0.1
         """
         clip = kwargs.get('clip', 1e2)
         verbose = kwargs.get('verbose', True)
         seed = kwargs.get('seed', self.seed)
+        focal_gamma = kwargs.get('focal_gamma', 2.0)
+        label_smoothing_alpha = kwargs.get('label_smoothing_alpha', 0.1)
         
         # Set random seeds for reproducibility
         self._set_seed(seed)
@@ -201,7 +237,18 @@ class PTSCalibrator(Calibrator):
                     
                 optimizer.zero_grad()
                 outputs, _ = self.forward(batch_logits)
-                loss = self.loss_fn(outputs, batch_labels)
+                
+                # Handle different loss function types
+                if isinstance(self.loss_fn, FocalLoss):
+                    # For Focal Loss, pass the gamma parameter
+                    loss = self.loss_fn(softmaxes=outputs, labels=batch_labels)
+                elif isinstance(self.loss_fn, LabelSmoothingLoss):
+                    # For Label Smoothing, pass the alpha parameter
+                    loss = self.loss_fn(softmaxes=outputs, labels=batch_labels)
+                else:
+                    # For other loss functions, use the outputs and targets directly
+                    loss = self.loss_fn(softmaxes=outputs, labels=batch_labels)
+                
                 loss.backward()
                 optimizer.step()
                 epoch_loss += loss.item() * batch_logits.size(0)

@@ -4,6 +4,10 @@ from torch.nn import functional as F
 import numpy as np
 
 from .calibrator import Calibrator
+from ..metrics import (
+    BrierLoss, FocalLoss, LabelSmoothingLoss, 
+    CrossEntropyLoss, MSELoss, SoftECE
+)
 
 class TemperatureScalingCalibrator(Calibrator):
     def __init__(self, loss_type='nll'):
@@ -13,11 +17,13 @@ class TemperatureScalingCalibrator(Calibrator):
         Args:
             loss_type (str): Type of loss function to use for training.
                 Options: 
-                - 'nll' (negative log likelihood/cross-entropy)
+                - 'nll' or 'ce' (negative log likelihood/cross-entropy)
                 - 'ece' (expected calibration error)
                 - 'brier' (Brier score)
-                - 'mmce' (maximum mean calibration error)
-                - 'ls' (label smoothing with alpha=0.05)
+                - 'mse' (mean squared error)
+                - 'focal' (focal loss with gamma=2.0)
+                - 'ls' (label smoothing with alpha=0.1)
+                - 'soft_ece' (soft expected calibration error)
         """
         super(TemperatureScalingCalibrator, self).__init__()
         self.temperature = nn.Parameter(torch.ones(1))
@@ -38,75 +44,6 @@ class TemperatureScalingCalibrator(Calibrator):
         temperature = temperature.unsqueeze(1).expand(logits.size(0), logits.size(1))
         return logits / temperature
 
-    def _brier_loss(self, probs, labels, num_classes):
-        """
-        Compute Brier score loss.
-        
-        Args:
-            probs (torch.Tensor): Predicted probabilities of shape (batch_size, num_classes)
-            labels (torch.Tensor): True labels of shape (batch_size,)
-            num_classes (int): Number of classes
-            
-        Returns:
-            torch.Tensor: Brier loss
-        """
-        # Convert labels to one-hot encoding
-        one_hot = torch.zeros(probs.size(0), num_classes, device=probs.device)
-        one_hot.scatter_(1, labels.unsqueeze(1), 1)
-        
-        # Compute Brier score
-        return torch.mean(torch.sum((probs - one_hot) ** 2, dim=1))
-    
-    def _mmce_loss(self, probs, labels, num_classes):
-        """
-        Compute Maximum Mean Calibration Error (MMCE) loss.
-        
-        Args:
-            probs (torch.Tensor): Predicted probabilities of shape (batch_size, num_classes)
-            labels (torch.Tensor): True labels of shape (batch_size,)
-            num_classes (int): Number of classes
-            
-        Returns:
-            torch.Tensor: MMCE loss
-        """
-        # Convert labels to one-hot encoding
-        one_hot = torch.zeros(probs.size(0), num_classes, device=probs.device)
-        one_hot.scatter_(1, labels.unsqueeze(1), 1)
-        
-        # Get predicted probabilities for the true classes
-        pred_probs = torch.gather(probs, 1, labels.unsqueeze(1)).squeeze(1)
-        
-        # Compute calibration error for each sample
-        calibration_error = torch.abs(pred_probs - 1.0)
-        
-        # Compute MMCE (simplified version)
-        return torch.mean(calibration_error)
-    
-    def _label_smoothing_loss(self, logits, labels, alpha=0.05):
-        """
-        Compute Label Smoothing loss.
-        
-        Args:
-            logits (torch.Tensor): Logits of shape (batch_size, num_classes)
-            labels (torch.Tensor): True labels of shape (batch_size,)
-            alpha (float): Smoothing parameter
-            
-        Returns:
-            torch.Tensor: Label smoothing loss
-        """
-        num_classes = logits.size(1)
-        
-        # Convert labels to one-hot encoding
-        one_hot = torch.zeros(logits.size(0), num_classes, device=logits.device)
-        one_hot.scatter_(1, labels.unsqueeze(1), 1)
-        
-        # Apply label smoothing
-        smooth_labels = one_hot * (1 - alpha) + alpha / num_classes
-        
-        # Compute cross-entropy with smoothed labels
-        log_probs = F.log_softmax(logits, dim=1)
-        return -torch.sum(smooth_labels * log_probs, dim=1).mean()
-
     def _get_loss_function(self, device, num_classes=None):
         """
         Get the appropriate loss function based on the loss_type.
@@ -118,23 +55,25 @@ class TemperatureScalingCalibrator(Calibrator):
         Returns:
             callable: Loss function
         """
-        if self.loss_type.lower() == 'nll' or self.loss_type.lower() == 'ce':
-            return nn.CrossEntropyLoss().to(device)
-        elif self.loss_type.lower() == 'ece':
+        loss_type_lower = self.loss_type.lower()
+        
+        if loss_type_lower in ['nll', 'ce', 'cross_entropy', 'crossentropy']:
+            return CrossEntropyLoss().to(device)
+        elif loss_type_lower in ['ece', 'expected_calibration_error']:
             from ..metrics import ECE
             return ECE(n_bins=15).to(device)
-        elif self.loss_type.lower() == 'brier':
-            if num_classes is None:
-                raise ValueError("num_classes must be provided for Brier loss")
-            return lambda probs, labels: self._brier_loss(probs, labels, num_classes)
-        elif self.loss_type.lower() == 'mmce':
-            if num_classes is None:
-                raise ValueError("num_classes must be provided for MMCE loss")
-            return lambda probs, labels: self._mmce_loss(probs, labels, num_classes)
-        elif self.loss_type.lower() == 'ls':
-            return lambda logits, labels: self._label_smoothing_loss(logits, labels, alpha=0.05)
+        elif loss_type_lower in ['brier', 'brier_score']:
+            return BrierLoss().to(device)
+        elif loss_type_lower in ['mse', 'mean_squared_error']:
+            return MSELoss().to(device)
+        elif loss_type_lower in ['focal', 'focal_loss']:
+            return FocalLoss().to(device)
+        elif loss_type_lower in ['ls', 'label_smoothing']:
+            return LabelSmoothingLoss().to(device)
+        elif loss_type_lower in ['soft_ece', 'softece']:
+            return SoftECE().to(device)
         else:
-            raise ValueError(f"Unsupported loss type: {self.loss_type}. Options are 'nll', 'ece', 'brier', 'mmce', or 'ls'.")
+            raise ValueError(f"Unsupported loss type: {self.loss_type}. Options are 'nll', 'ce', 'ece', 'brier', 'mse', 'focal', 'ls', or 'soft_ece'.")
 
     def fit(self, val_logits, val_labels, **kwargs):
         """
@@ -146,6 +85,8 @@ class TemperatureScalingCalibrator(Calibrator):
             **kwargs: Additional arguments
                 - max_iter (int): Maximum number of iterations for the optimizer
                 - lr (float): Learning rate for the optimizer
+                - focal_gamma (float): Gamma parameter for focal loss, defaults to 2.0
+                - label_smoothing_alpha (float): Alpha parameter for label smoothing, defaults to 0.1
                 
         Returns:
             float: Optimal temperature value
@@ -171,15 +112,9 @@ class TemperatureScalingCalibrator(Calibrator):
             optimizer.zero_grad()
             scaled_logits = self.temperature_scale(val_logits)
             
-            if self.loss_type.lower() in ['nll', 'ce', 'ls']:
-                loss = loss_fn(scaled_logits, val_labels)
-            else:  # ece, brier, mmce
-                probs = F.softmax(scaled_logits, dim=1)
-                if self.loss_type.lower() == 'ece':
-                    loss = loss_fn(softmaxes=probs, labels=val_labels)
-                else:  # brier, mmce
-                    loss = loss_fn(probs, val_labels)
-                
+            # Use the loss function with the appropriate parameters
+            loss = loss_fn(logits=scaled_logits, labels=val_labels)
+            
             loss.backward()
             return loss
             

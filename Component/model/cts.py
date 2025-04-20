@@ -53,7 +53,7 @@ class CTSCalibrator(Calibrator):
             **kwargs: Additional arguments
                 - grid (np.array): Temperature grid to search over, defaults to np.arange(0.1, 10.1, 0.1)
                 - ts_loss (str): Loss function to use for temperature scaling initialization, defaults to 'nll'
-                  Options: 'nll', 'ece', 'brier', 'mmce', 'ls'
+                  Options: 'nll', 'ce', 'ece', 'brier', 'mse', 'focal', 'ls', 'soft_ece'
                 
         Returns:
             np.array: Optimized temperature vector of shape (n_class,)
