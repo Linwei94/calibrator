@@ -104,7 +104,7 @@ class PTSCalibrator(Calibrator):
                 return SoftECE()
             elif loss_fn_lower in {"brier", "brier_score"}:
                 return BrierLoss()
-            elif loss_fn_lower in {"focal", "focal_loss"}:
+            elif loss_fn_lower in {"focal", "focal_loss", "fl"}:
                 return FocalLoss()
             elif loss_fn_lower in {"label_smoothing", "ls"}:
                 return LabelSmoothingLoss()
