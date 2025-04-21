@@ -26,7 +26,7 @@ class SoftECE(nn.Module):
                                           1 - 1/(2*self.n_bins), 
                                           self.n_bins))
     
-    def forward(self, logits, targets):
+    def forward(self, logits, labels):
         """
         Args:
             logits: [batch_size, num_classes] 的网络输出
@@ -36,7 +36,7 @@ class SoftECE(nn.Module):
             soft ECE loss (可参与反向传播)
         """
         # Ensure targets is on the same device as logits
-        targets = targets.to(logits.device)
+        targets = labels.to(logits.device)
         
         # 1) logits -> 概率分布
         probs = F.softmax(logits, dim=1)  # [B, C]

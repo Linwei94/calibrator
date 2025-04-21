@@ -107,7 +107,7 @@ class PTSCalibrator(Calibrator):
             elif loss_fn_lower in {"focal", "focal_loss", "fl"}:
                 return FocalLoss()
             elif loss_fn_lower in {"label_smoothing", "ls"}:
-                return LabelSmoothingLoss()
+                return LabelSmoothingLoss(alpha=0.01)
             else:
                 raise ValueError(f"Unsupported loss function: {loss_fn}")
         else:
@@ -211,7 +211,7 @@ class PTSCalibrator(Calibrator):
                 elif isinstance(self.loss_fn, BrierLoss):
                     loss = self.loss_fn(logits=cal_logits, labels=batch_labels)
                 elif isinstance(self.loss_fn, (FocalLoss, LabelSmoothingLoss)):
-                    loss = self.loss_fn(softmaxes=cal_probs, labels=batch_labels)
+                    loss = self.loss_fn(softmaxes=cal_logits, labels=batch_labels)
                 else:
                     # *** HERE: MSE gets probabilities, CE gets logits ***
                     loss_in = cal_probs if isinstance(self.loss_fn, nn.MSELoss) else cal_logits
