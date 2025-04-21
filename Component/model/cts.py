@@ -3,6 +3,8 @@ import torch.nn as nn
 import numpy as np
 from .calibrator import Calibrator
 from ..metrics import ECE, Accuracy
+import torch.nn.functional as F
+from .temperature_scaling import TemperatureScalingCalibrator
 
 class CTSCalibrator(Calibrator):
     """
@@ -27,6 +29,7 @@ class CTSCalibrator(Calibrator):
         # Initialize metrics
         self.ece_metric = ECE(n_bins=n_bins)
         self.accuracy_metric = Accuracy()
+
     def forward(self, x):
         """
         Forward pass: scales the input logits x by dividing each column (class score) 
@@ -43,107 +46,94 @@ class CTSCalibrator(Calibrator):
 
     def fit(self, val_logits, val_labels, **kwargs):
         """
-        Fit the CTS calibrator on validation data using a greedy search approach.
-        For each class separately, finds a temperature that minimizes ECE while
-        maintaining accuracy.
+        Fit the calibrator using validation logits and labels.
         
         Args:
-            val_logits (torch.Tensor): Validation logits of shape (N, n_class)
-            val_labels (torch.Tensor): Validation labels of shape (N,)
-            **kwargs: Additional arguments
-                - grid (np.array): Temperature grid to search over, defaults to np.arange(0.1, 10.1, 0.1)
-                - ts_loss (str): Loss function to use for temperature scaling initialization, defaults to 'nll'
-                  Options: 'nll', 'ce', 'ece', 'brier', 'mse', 'focal', 'ls', 'soft_ece'
-                
-        Returns:
-            np.array: Optimized temperature vector of shape (n_class,)
-            dict: Dictionary containing:
-                - 'final_ece': Final ECE value after optimization
-                - 'final_accuracy': Final accuracy after optimization
+            val_logits: torch.Tensor
+                Validation logits
+            val_labels: torch.Tensor
+                Validation labels
+            **kwargs: dict
+                Additional arguments:
+                - grid: list of temperature values to search over
+                - ts_loss: loss function type for temperature scaling initialization
         """
-        # Convert inputs to tensors if they're not already
-        if not torch.is_tensor(val_logits):
-            val_logits = torch.tensor(val_logits, dtype=torch.float32)
-        if not torch.is_tensor(val_labels):
-            val_labels = torch.tensor(val_labels, dtype=torch.float32)
-            
-        # Get temperature grid from kwargs or use default
-        grid = kwargs.get('grid', np.arange(0.1, 10.1, 0.1)) 
-        
-        # Step 1: Initialize all temperature parameters using traditional temperature scaling
-        print("Initializing temperature parameters using traditional temperature scaling...")
-        
-        # Create a temporary temperature scaling calibrator
-        from .temperature_scaling import TemperatureScalingCalibrator
-        ts_loss = kwargs.get('ts_loss', 'nll')
-        print(f"Using {ts_loss} loss for temperature scaling initialization")
-        ts_calibrator = TemperatureScalingCalibrator(loss_type=ts_loss)
-        
-        # Move to the same device as val_logits
         device = val_logits.device
-        ts_calibrator.to(device)
+        self.to(device)
         
-        # Ensure val_logits and val_labels are on the same device as ts_calibrator
-        val_logits_ts = val_logits.to(device)
-        val_labels_ts = val_labels.to(device)
+        # Initialize temperature parameters using traditional temperature scaling
+        ts_calibrator = TemperatureScalingCalibrator(loss_type=kwargs.get('ts_loss', 'nll'))
+        ts_calibrator.fit(val_logits, val_labels)
+        # Initialize all class temperatures with the single temperature from TS
+        self.T.data = torch.ones(self.n_class, device=device) * ts_calibrator.temperature.data
         
-        # Fit the traditional temperature scaling
-        ts_temp = ts_calibrator.fit(val_logits_ts, val_labels_ts)
-        print(f"Traditional temperature scaling found temperature: {ts_temp:.4f}")
+        # Compute initial probabilities
+        val_probs = F.softmax(val_logits / self.T, dim=1)
         
-        # Initialize all class temperatures with the same value from TS
-        current_T = np.ones(self.n_class) * ts_temp
+        # Compute initial metrics
+        ece_fn = ECE(n_bins=self.n_bins).to(device)
+        initial_ece = ece_fn(softmaxes=val_probs, labels=val_labels)
+        initial_acc = (val_probs.argmax(dim=1) == val_labels).float().mean().item()
         
-        # Compute initial probabilities, accuracy, and ECE using TS-initialized temperatures
-        scaled_logits = val_logits / torch.tensor(current_T, device=val_logits.device)
-        probs = torch.nn.functional.softmax(scaled_logits, dim=1)
-        base_acc = self.accuracy_metric(softmaxes=probs, labels=val_labels)
-        base_ece = self.ece_metric(softmaxes=probs, labels=val_labels)
-        print(f"After TS initialization: Accuracy = {base_acc:.4f}, ECE = {base_ece:.4f}")
+        print(f"Initial ECE: {initial_ece:.4f}, Accuracy: {initial_acc:.4f}")
         
-        # Step 2: Greedy optimization loop
-        print("\nStarting greedy optimization for class-specific temperatures...")
-        for iteration in range(self.n_iter):
-            updated = False
-            print(f"\nIteration {iteration + 1}:")
-            for i in range(self.n_class):
-                best_candidate = current_T[i]
-                best_ece = base_ece
-                # Search candidate temperatures for class i over the grid
-                for candidate in grid:
-                    candidate_T = current_T.copy()
-                    candidate_T[i] = candidate
-                    candidate_scaled_logits = val_logits / torch.tensor(candidate_T, device=val_logits.device)
-                    candidate_probs = torch.nn.functional.softmax(candidate_scaled_logits, dim=1)
-                    candidate_ece = self.ece_metric(softmaxes=candidate_probs, labels=val_labels)
-                    candidate_acc = self.accuracy_metric(softmaxes=candidate_probs, labels=val_labels)
-                    # Update if candidate yields lower ECE and does not reduce accuracy
-                    if candidate_acc >= base_acc and candidate_ece < best_ece:
-                        best_candidate = candidate
-                        best_ece = candidate_ece
-                if best_candidate != current_T[i]:
-                    print(f"  Class {i}: {current_T[i]:.2f} -> {best_candidate:.2f} (ECE: {best_ece:.4f})")
-                    current_T[i] = best_candidate
-                    # Refresh overall accuracy and ECE after this update
-                    scaled_logits = val_logits / torch.tensor(current_T, device=val_logits.device)
-                    probs = torch.nn.functional.softmax(scaled_logits, dim=1)
-                    base_acc = self.accuracy_metric(softmaxes=probs, labels=val_labels)
-                    base_ece = self.ece_metric(softmaxes=probs, labels=val_labels)
-                    updated = True
-            # If none of the classes got updated in this iteration, break out
-            if not updated:
-                print("No update in this iteration, converged.")
-                break
-            else:
-                print(f"After iteration {iteration + 1}: Accuracy = {base_acc:.4f}, ECE = {base_ece:.4f}")
+        # Greedy optimization loop
+        grid = kwargs.get('grid', [0.1, 0.2, 0.5, 1.0, 2.0, 5.0])
+        best_ece = initial_ece
+        best_acc = initial_acc
         
-        # Finally, update the module's parameter with the optimized temperatures
-        self.T.data = torch.from_numpy(current_T).to(self.T.device)
-        print("\nOptimized class-based temperatures:", current_T)
+        for iter in range(self.n_iter):
+            print(f"\nIteration {iter + 1}/{self.n_iter}")
+            
+            # Try different temperatures for each class
+            for cls in range(self.n_class):
+                best_temp = self.T[cls].item()
+                best_cls_ece = float('inf')
+                
+                # Get class-specific logits and labels
+                cls_mask = (val_labels == cls)
+                if not cls_mask.any():
+                    continue
+                    
+                cls_logits = val_logits[cls_mask]
+                cls_labels = val_labels[cls_mask]
+                
+                # Try each temperature value
+                for temp in grid:
+                    # Create temporary temperature vector
+                    temp_tensor = self.T.data.clone()
+                    temp_tensor[cls] = temp
+                    
+                    # Compute probabilities with current temperature
+                    probs = F.softmax(cls_logits / temp_tensor[cls], dim=1)
+                    
+                    # Compute ECE for this class
+                    cls_ece = ece_fn(softmaxes=probs, labels=cls_labels)
+                    
+                    if cls_ece < best_cls_ece:
+                        best_cls_ece = cls_ece
+                        best_temp = temp
+                
+                # Update temperature for this class
+                self.T.data[cls] = best_temp
+                print(f"Class {cls}: Best temperature = {best_temp:.2f}, ECE = {best_cls_ece:.4f}")
+            
+            # Compute overall metrics with updated temperatures
+            val_probs = F.softmax(val_logits / self.T, dim=1)
+            current_ece = ece_fn(softmaxes=val_probs, labels=val_labels)
+            current_acc = (val_probs.argmax(dim=1) == val_labels).float().mean().item()
+            
+            print(f"Iteration {iter + 1} - ECE: {current_ece:.4f}, Accuracy: {current_acc:.4f}")
+            
+            # Update best metrics
+            if current_ece < best_ece:
+                best_ece = current_ece
+                best_acc = current_acc
+                print(f"New best ECE: {best_ece:.4f}, Accuracy: {best_acc:.4f}")
         
-        return current_T, {
-            'final_ece': base_ece,
-            'final_accuracy': base_acc
+        return {
+            'final_ece': best_ece,
+            'final_accuracy': best_acc
         }
 
     def calibrate(self, test_logits, return_logits=False, **kwargs):
@@ -167,11 +157,11 @@ class CTSCalibrator(Calibrator):
         calibrated_logits = self.forward(test_logits)
         
         if return_logits:
-            return calibrated_logits.detach().cpu().numpy()
+            return calibrated_logits
         
         # Apply softmax to get probabilities
         calibrated_probs = torch.nn.functional.softmax(calibrated_logits, dim=1)
-        return calibrated_probs.detach().cpu().numpy()
+        return calibrated_probs
     
     def save(self, path="./"):
         """

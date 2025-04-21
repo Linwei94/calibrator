@@ -65,80 +65,81 @@ class ECE(nn.Module):
         return ece
 
 
-class KernelECE(nn.Module):
-    '''
-    Compute ECE (Expected Calibration Error) based on kernel density estimates
-    This provides a continuous estimate of calibration error without binning
-    '''
-    def __init__(self, bandwidth=0.01, num_points=100):
-        '''
+class ECE(nn.Module):
+    """
+    Soft-binned Expected Calibration Error loss (using a Gaussian kernel).
+    通过"软分桶"来计算 ECE，使梯度对置信度更加平滑可传播。
+    """
+    def __init__(self, n_bins=15, sigma=0.05, eps=1e-6):
+        """
         Args:
-            bandwidth: float
-                The bandwidth parameter for the kernel density estimation
-            num_points: int
-                The number of points to evaluate the kernel density
-        '''
-        super(KernelECE, self).__init__()
-        self.bandwidth = bandwidth
-        self.num_points = num_points
-        self.eval_points = torch.linspace(0, 1, num_points)
-
-    def gaussian_kernel(self, x, y):
-        '''
-        Compute the Gaussian kernel between x and y
+            n_bins: 将 [0,1] 区间大致分为多少个 bin
+            sigma: 高斯核的带宽 (标准差)
+            eps: 避免除 0 的小量
+        """
+        super(ECE, self).__init__()
+        self.n_bins = n_bins
+        self.sigma = sigma
+        self.eps = eps
         
+        # 这里使用 bin 的中心点而不是边界
+        # 若希望严格对齐 [0,1] 两端，也可以选择别的排布方式
+        self.bin_centers = torch.linspace(1/(2*self.n_bins), 
+                                          1 - 1/(2*self.n_bins), 
+                                          self.n_bins)
+    
+    def forward(self, logits, targets):
+        """
         Args:
-            x: torch.Tensor
-                The first tensor
-            y: torch.Tensor
-                The second tensor
-                
+            logits: [batch_size, num_classes] 的网络输出
+            targets: [batch_size] 的整型真实标签
+        
         Returns:
-            kernel: torch.Tensor
-                The kernel values
-        '''
-        return torch.exp(-0.5 * ((x.unsqueeze(1) - y.unsqueeze(0)) / self.bandwidth) ** 2)
-
-    def forward(self, logits=None, labels=None, softmaxes=None):
-        '''
-        args:
-            logits: torch.Tensor
-                The logits to calibrate, the output of the model before softmax layer
-            labels: torch.Tensor
-                The labels of the test data
-            softmaxes: torch.Tensor
-                The softmaxes of the test data, if None, compute the softmaxes from logits
-
-        Returns:
-            kernel_ece: float
-                The kernel-based ECE value
-        '''
-        if softmaxes is None:
-            softmaxes = F.softmax(logits, dim=1)
+            soft ECE loss (可参与反向传播)
+        """
+        # 1) logits -> 概率分布
+        probs = F.softmax(logits, dim=1)  # [B, C]
         
-        confidences, predictions = torch.max(softmaxes, 1)
-        accuracies = predictions.eq(labels).float()
+        # 2) 获取每个样本的最高置信度
+        confidences, predictions = torch.max(probs, dim=1)  # [B]
+        # 3) 计算该预测是否正确
+        accuracies = (predictions == targets).float()       # [B]
         
-        # Move tensors to the same device as the model
-        device = next(self.parameters()).device if list(self.parameters()) else confidences.device
-        confidences = confidences.to(device)
-        accuracies = accuracies.to(device)
-        eval_points = self.eval_points.to(device)
+        # 为了在计算中不丢失设备信息（CPU/GPU），
+        # 将 bin_centers 放到与 confidences 相同的 device 上
+        bin_centers = self.bin_centers.to(confidences.device)
         
-        # Compute kernel density for confidences
-        kernel_conf = self.gaussian_kernel(eval_points, confidences)
-        density_conf = kernel_conf.mean(dim=1)
+        # 4) 计算对每个 bin 的软分配权重 (Gaussian kernel)
+        #    shape: [batch_size, n_bins]
+        #    weights[j, i] = exp(- (confidences[j] - bin_centers[i])^2 / (2*sigma^2))
+        #    后续会再进行归一化
+        diff = confidences.unsqueeze(1) - bin_centers.unsqueeze(0)  # [B, n_bins]
+        weights = torch.exp(-0.5 * (diff**2) / (self.sigma**2))     # [B, n_bins]
         
-        # Compute kernel density for accuracies
-        kernel_acc = self.gaussian_kernel(eval_points, accuracies)
-        density_acc = kernel_acc.mean(dim=1)
+        # 归一化：对每个样本，使所有 bin 的权重之和=1
+        # 这样每个样本会对所有 bin 有一个分布(soft assignment)
+        weights_sum = weights.sum(dim=1, keepdim=True) + self.eps   # [B, 1]
+        weights_norm = weights / weights_sum                        # [B, n_bins]
         
-        # Normalize densities
-        density_conf = density_conf / (density_conf.sum() + 1e-10)
-        density_acc = density_acc / (density_acc.sum() + 1e-10)
+        # 5) 分别计算每个 bin 的"平均置信度"和"平均准确率"
+        #    avg_confidence_in_bin[i] = \sum_j (weights_norm[j,i] * confidences[j]) / \sum_j (weights_norm[j,i])
+        #    下面用按列求和的方式实现
+        weighted_confidence = weights_norm * confidences.unsqueeze(1)   # [B, n_bins]
+        sum_conf_in_bin = weighted_confidence.sum(dim=0)                # [n_bins]
+        sum_weights_in_bin = weights_norm.sum(dim=0)                    # [n_bins]
+        avg_confidence_in_bin = sum_conf_in_bin / (sum_weights_in_bin + self.eps)
         
-        # Compute ECE as the absolute difference between confidence and accuracy densities
-        # weighted by the confidence density
-        ece = torch.sum(torch.abs(eval_points - density_acc) * density_conf)
+        # 同理计算平均准确率
+        weighted_accuracy = weights_norm * accuracies.unsqueeze(1)      # [B, n_bins]
+        sum_acc_in_bin = weighted_accuracy.sum(dim=0)                   # [n_bins]
+        avg_accuracy_in_bin = sum_acc_in_bin / (sum_weights_in_bin + self.eps)
         
-        return ece.item()
+        # 6) 计算 ECE：对每个 bin 的误差 * bin 的权重占比 再累加
+        #    prop_in_bin = \sum_j weights_norm[j, i] / batch_size
+        prop_in_bin = sum_weights_in_bin / confidences.size(0)          # [n_bins]
+        
+        # soft ece = sum_i ( | avg_conf_in_bin[i] - avg_acc_in_bin[i] | * prop_in_bin[i] )
+        ece_per_bin = torch.abs(avg_confidence_in_bin - avg_accuracy_in_bin)
+        soft_ece = torch.sum(ece_per_bin * prop_in_bin)
+        
+        return soft_ece
