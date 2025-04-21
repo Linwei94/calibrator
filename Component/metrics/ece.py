@@ -15,9 +15,7 @@ class ECE(nn.Module):
                 The number of bins to use for the calibration
         '''
         super(ECE, self).__init__()
-        bin_boundaries = torch.linspace(0, 1, n_bins + 1)
-        self.bin_lowers = bin_boundaries[:-1]
-        self.bin_uppers = bin_boundaries[1:]
+        self.n_bins = n_bins
 
     def forward(self, logits=None, labels=None, softmaxes=None):
         '''
@@ -35,20 +33,36 @@ class ECE(nn.Module):
         '''
         if softmaxes is None:
             softmaxes = F.softmax(logits, dim=1)
-        confidences, predictions = torch.max(softmaxes, 1)
-        accuracies = predictions.eq(labels)
-
-        ece = torch.zeros(1, device=labels.device)
-        for bin_lower, bin_upper in zip(self.bin_lowers, self.bin_uppers):
-            # Calculated |confidence - accuracy| in each bin
-            in_bin = confidences.gt(bin_lower.item()) * confidences.le(bin_upper.item())
-            prop_in_bin = in_bin.float().mean()
-            if prop_in_bin.item() > 0:
-                accuracy_in_bin = accuracies[in_bin].float().mean()
-                avg_confidence_in_bin = confidences[in_bin].mean()
-                ece += torch.abs(avg_confidence_in_bin - accuracy_in_bin) * prop_in_bin
-
-        return ece.item()
+            
+        # Convert to NumPy arrays if they're PyTorch tensors
+        if torch.is_tensor(softmaxes):
+            probs = softmaxes.detach().cpu().numpy()
+        else:
+            probs = softmaxes
+            
+        if torch.is_tensor(labels):
+            labels_np = labels.detach().cpu().numpy()
+        else:
+            labels_np = labels
+            
+        bin_boundaries = np.linspace(0, 1, self.n_bins + 1)
+        bin_lowers = bin_boundaries[:-1]
+        bin_uppers = bin_boundaries[1:]
+        
+        confidences = np.max(probs, axis=1)
+        predictions = np.argmax(probs, axis=1)
+        accuracies = (predictions == labels_np)
+        
+        ece = 0.0
+        for bin_lower, bin_upper in zip(bin_lowers, bin_uppers):
+            in_bin = np.logical_and(confidences > bin_lower, confidences <= bin_upper)
+            prop_in_bin = np.mean(in_bin)
+            if prop_in_bin > 0:
+                accuracy_in_bin = np.mean(accuracies[in_bin])
+                avg_confidence_in_bin = np.mean(confidences[in_bin])
+                ece += np.abs(avg_confidence_in_bin - accuracy_in_bin) * prop_in_bin
+        
+        return ece
 
 
 class KernelECE(nn.Module):
