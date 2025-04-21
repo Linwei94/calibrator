@@ -2,6 +2,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
 
 class BrierLoss(nn.Module):
     """
@@ -9,9 +10,27 @@ class BrierLoss(nn.Module):
     
     The Brier score is a proper scoring function for probabilistic predictions.
     It measures the mean squared difference between predicted probabilities and actual outcomes.
+    The smaller the Brier score loss, the better.
+    
+    For N observations labeled from C possible classes, the Brier score is defined as:
+    (1/N) * sum_{i=1}^N sum_{c=1}^C (y_ic - p_ic)^2
+    
+    where y_ic is 1 if observation i belongs to class c, otherwise 0
+    and p_ic is the predicted probability for observation i to belong to class c.
+    
+    The Brier score ranges between [0, 2].
+    For binary classification, it is often scaled by 1/2 to range between [0, 1].
     """
-    def __init__(self):
+    def __init__(self, scale_by_half=True):
+        """
+        Initialize Brier Loss
+        
+        Args:
+            scale_by_half (bool): If True, scale the Brier score by 1/2 to lie in [0, 1]
+                instead of [0, 2]. Default is True.
+        """
         super(BrierLoss, self).__init__()
+        self.scale_by_half = scale_by_half
 
     def forward(self, logits=None, labels=None, softmaxes=None, **kwargs):
         """
@@ -44,4 +63,10 @@ class BrierLoss(nn.Module):
             targets = labels
         
         # Compute Brier loss
-        return torch.mean(torch.sum((outputs - targets) ** 2, dim=1)) 
+        brier_score = torch.mean(torch.sum((outputs - targets) ** 2, dim=1))
+        
+        # Scale by half if requested
+        if self.scale_by_half:
+            brier_score *= 0.5
+            
+        return brier_score 
