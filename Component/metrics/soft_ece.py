@@ -22,9 +22,9 @@ class SoftECE(nn.Module):
         
         # 这里使用 bin 的中心点而不是边界
         # 若希望严格对齐 [0,1] 两端，也可以选择别的排布方式
-        self.bin_centers = torch.linspace(1/(2*self.n_bins), 
+        self.register_buffer('bin_centers', torch.linspace(1/(2*self.n_bins), 
                                           1 - 1/(2*self.n_bins), 
-                                          self.n_bins)
+                                          self.n_bins))
     
     def forward(self, logits, targets):
         """
@@ -35,23 +35,23 @@ class SoftECE(nn.Module):
         Returns:
             soft ECE loss (可参与反向传播)
         """
+        # Ensure targets is on the same device as logits
+        targets = targets.to(logits.device)
+        
         # 1) logits -> 概率分布
         probs = F.softmax(logits, dim=1)  # [B, C]
         
         # 2) 获取每个样本的最高置信度
         confidences, predictions = torch.max(probs, dim=1)  # [B]
+        
         # 3) 计算该预测是否正确
         accuracies = (predictions == targets).float()       # [B]
-        
-        # 为了在计算中不丢失设备信息（CPU/GPU），
-        # 将 bin_centers 放到与 confidences 相同的 device 上
-        bin_centers = self.bin_centers.to(confidences.device)
         
         # 4) 计算对每个 bin 的软分配权重 (Gaussian kernel)
         #    shape: [batch_size, n_bins]
         #    weights[j, i] = exp(- (confidences[j] - bin_centers[i])^2 / (2*sigma^2))
         #    后续会再进行归一化
-        diff = confidences.unsqueeze(1) - bin_centers.unsqueeze(0)  # [B, n_bins]
+        diff = confidences.unsqueeze(1) - self.bin_centers.unsqueeze(0)  # [B, n_bins]
         weights = torch.exp(-0.5 * (diff**2) / (self.sigma**2))     # [B, n_bins]
         
         # 归一化：对每个样本，使所有 bin 的权重之和=1
@@ -68,6 +68,7 @@ class SoftECE(nn.Module):
         avg_confidence_in_bin = sum_conf_in_bin / (sum_weights_in_bin + self.eps)
         
         # 同理计算平均准确率
+        # 确保 accuracies 的形状与 weights_norm 兼容
         weighted_accuracy = weights_norm * accuracies.unsqueeze(1)      # [B, n_bins]
         sum_acc_in_bin = weighted_accuracy.sum(dim=0)                   # [n_bins]
         avg_accuracy_in_bin = sum_acc_in_bin / (sum_weights_in_bin + self.eps)

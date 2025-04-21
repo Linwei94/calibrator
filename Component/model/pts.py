@@ -200,6 +200,9 @@ class PTSCalibrator(Calibrator):
         # Check input dimensions
         assert val_logits.size(1) == self.length_logits, "Logits length must match length_logits!"
         
+        # Store original labels for SoftECE
+        original_labels = val_labels.clone() if torch.is_tensor(val_labels) else torch.tensor(val_labels, dtype=torch.long)
+        
         # Convert class indices to one-hot encoded vectors if needed
         if len(val_labels.shape) == 1:
             # Create one-hot encoded vectors from class indices
@@ -211,7 +214,7 @@ class PTSCalibrator(Calibrator):
         val_logits = torch.clamp(val_logits, min=-clip, max=clip)
         
         # Create DataLoader with fixed seed for shuffling
-        dataset = TensorDataset(val_logits, val_labels)
+        dataset = TensorDataset(val_logits, val_labels, original_labels)
         generator = torch.Generator().manual_seed(seed)
         dataloader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True, generator=generator)
         
@@ -231,7 +234,7 @@ class PTSCalibrator(Calibrator):
             epoch_loader = tqdm(dataloader, desc=f"Epoch {epochs+1}", 
                                 leave=False, disable=not verbose)
             
-            for batch_logits, batch_labels in epoch_loader:
+            for batch_logits, batch_labels, batch_original_labels in epoch_loader:
                 if step_count >= self.steps:
                     break
                     
@@ -239,15 +242,18 @@ class PTSCalibrator(Calibrator):
                 outputs, _ = self.forward(batch_logits)
                 
                 # Handle different loss function types
-                if isinstance(self.loss_fn, FocalLoss):
-                    # For Focal Loss, pass the gamma parameter
-                    loss = self.loss_fn(softmaxes=outputs, labels=batch_labels)
-                elif isinstance(self.loss_fn, LabelSmoothingLoss):
-                    # For Label Smoothing, pass the alpha parameter
+                if isinstance(self.loss_fn, SoftECE):
+                    # For SoftECE, pass logits and original class indices
+                    loss = self.loss_fn(outputs, batch_original_labels)
+                elif isinstance(self.loss_fn, BrierLoss):
+                    # For BrierLoss, pass logits and targets as keyword arguments
+                    loss = self.loss_fn(logits=outputs, labels=batch_labels)
+                elif isinstance(self.loss_fn, (FocalLoss, LabelSmoothingLoss)):
+                    # For FocalLoss and LabelSmoothingLoss, pass softmaxes and labels
                     loss = self.loss_fn(softmaxes=outputs, labels=batch_labels)
                 else:
-                    # For other loss functions, use the outputs and targets directly
-                    loss = self.loss_fn(softmaxes=outputs, labels=batch_labels)
+                    # For other loss functions (CrossEntropyLoss, MSELoss), pass outputs and targets directly
+                    loss = self.loss_fn(outputs, batch_labels)
                 
                 loss.backward()
                 optimizer.step()

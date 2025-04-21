@@ -1,17 +1,24 @@
 import numpy as np
+import torch
 
 def compute_ece(probs, labels, n_bins=15):
     """
     Compute ECE (Expected Calibration Error)
     
     Args:
-        probs: numpy array of shape [n_samples, n_classes] with probabilities
-        labels: numpy array of shape [n_samples] with ground truth labels
+        probs: numpy array or torch.Tensor of shape [n_samples, n_classes] with probabilities
+        labels: numpy array or torch.Tensor of shape [n_samples] with ground truth labels
         n_bins: number of bins for confidence histogram
         
     Returns:
         Expected Calibration Error
     """
+    # Convert PyTorch tensors to NumPy arrays if necessary
+    if torch.is_tensor(probs):
+        probs = probs.detach().cpu().numpy()
+    if torch.is_tensor(labels):
+        labels = labels.detach().cpu().numpy()
+        
     bin_boundaries = np.linspace(0, 1, n_bins + 1)
     bin_lowers = bin_boundaries[:-1]
     bin_uppers = bin_boundaries[1:]
