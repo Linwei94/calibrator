@@ -134,146 +134,98 @@ class PTSCalibrator(Calibrator):
                     nn.init.zeros_(m.bias)
 
     def forward(self, input_logits):
-        """
-        Forward pass:
-          1. Sort input logits in descending order and take top k elements;
-          2. Pass the selected elements through the fully connected network to get scalar temperature (with abs and clip);
-          3. Divide original logits by the temperature and apply softmax to get calibrated probability distribution.
-        """
-        # Input shape: (batch_size, length_logits)
-        # Sort logits in descending order
-        sorted_logits, _ = torch.sort(input_logits, dim=1, descending=True)
-        # Take top k elements
-        topk = sorted_logits[:, :self.top_k_logits]  # shape: (batch_size, top_k_logits)
-        
-        # Get temperature through fully connected network (output shape: (batch_size, 1))
-        t = self.temp_branch(topk)
-        temperature = torch.abs(t)
-        # Clip temperature to prevent division by zero or large values
-        temperature = torch.clamp(temperature, min=1e-12, max=1e12)
-        # Use broadcasting to apply temperature to all logits
+        sorted_logits, _ = torch.sort(input_logits, 1, True)
+        topk        = sorted_logits[:, :self.top_k_logits]
+
+        t           = self.temp_branch(topk)     # (B,1)
+        temperature = torch.abs(t)               # ← paper
+        temperature = torch.clamp(temperature, 1e-12, 1e12)
+
         adjusted_logits = input_logits / temperature
-        # Output softmax probability distribution
-        calibrated_probs = F.softmax(adjusted_logits, dim=1)
+        calibrated_probs= F.softmax(adjusted_logits, dim=1)
         return calibrated_probs, adjusted_logits
 
+
     def fit(self, val_logits, val_labels, **kwargs):
-        """
-        Tune (train) the PTS model
-        
-        Args:
-            val_logits (np.array or torch.Tensor): shape (N, length_logits)
-            val_labels (np.array or torch.Tensor): shape (N,) - class indices
-                or shape (N, length_logits) - one-hot encoded vectors
-            **kwargs: Optional additional parameters
-                - clip (float): Clipping threshold for logits, defaults to 1e2
-                - verbose (bool): Whether to display progress bars, defaults to True
-                - seed (int): Random seed for reproducibility, defaults to the one set in __init__
-                - focal_gamma (float): Gamma parameter for focal loss, defaults to 2.0
-                - label_smoothing_alpha (float): Alpha parameter for label smoothing, defaults to 0.1
-        """
-        clip = kwargs.get('clip', 1e2)
-        verbose = kwargs.get('verbose', True)
-        seed = kwargs.get('seed', self.seed)
-        focal_gamma = kwargs.get('focal_gamma', 2.0)
-        label_smoothing_alpha = kwargs.get('label_smoothing_alpha', 0.1)
-        
-        # Set random seeds for reproducibility
+        """Tune (train) the PTS model."""
+        clip    = kwargs.get('clip',      1e2)
+        seed    = kwargs.get('seed',      self.seed)
+        verbose = kwargs.get('verbose',   True)
+
         self._set_seed(seed)
-        
-        # Set length_logits if not already set
-        if self.length_logits is None:
-            self.length_logits = val_logits.shape[1]
-        
-        # Convert to tensor if input is not already a tensor (float type)
+
+        # -------- tensors & device --------
         if not torch.is_tensor(val_logits):
             val_logits = torch.tensor(val_logits, dtype=torch.float32)
         if not torch.is_tensor(val_labels):
             val_labels = torch.tensor(val_labels, dtype=torch.float32)
-        
-        # Move tensors to CUDA if available
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        val_logits = val_logits.to(device)
-        val_labels = val_labels.to(device)
-        self.to(device)  # Move model to the same device
-        
-        # Check input dimensions
-        assert val_logits.size(1) == self.length_logits, "Logits length must match length_logits!"
-        
-        # Store original labels for SoftECE
-        original_labels = val_labels.clone() if torch.is_tensor(val_labels) else torch.tensor(val_labels, dtype=torch.long)
-        
-        # Convert class indices to one-hot encoded vectors if needed
-        if len(val_labels.shape) == 1:
-            # Create one-hot encoded vectors from class indices
-            one_hot_labels = torch.zeros(val_labels.size(0), self.length_logits, dtype=torch.float32, device=device)
-            one_hot_labels.scatter_(1, val_labels.unsqueeze(1), 1)
-            val_labels = one_hot_labels
-        
-        # Clip logits
-        val_logits = torch.clamp(val_logits, min=-clip, max=clip)
-        
-        # Create DataLoader with fixed seed for shuffling
-        dataset = TensorDataset(val_logits, val_labels, original_labels)
-        generator = torch.Generator().manual_seed(seed)
-        dataloader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True, generator=generator)
-        
-        # Define optimizer (weight_decay implements L2 regularization)
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr, weight_decay=self.weight_decay)
-        
+
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        val_logits, val_labels = val_logits.to(device), val_labels.to(device)
+        self.to(device)
+
+        # infer number of classes once
+        if self.length_logits is None:
+            self.length_logits = val_logits.shape[1]
+        assert val_logits.size(1) == self.length_logits
+
+        # keep a copy of original class indices for SoftECE
+        original_labels = val_labels.clone()
+
+        # labels: indices → one‑hot
+        if val_labels.ndim == 1:
+            oh = torch.zeros(
+                val_labels.size(0), self.length_logits,
+                dtype=torch.float32, device=device)
+            oh.scatter_(1, val_labels.unsqueeze(1), 1.)
+            val_labels = oh
+
+        # clip logits
+        val_logits = torch.clamp(val_logits, -clip, clip)
+
+        # -------- dataloader --------
+        dataset   = TensorDataset(val_logits, val_labels, original_labels)
+        loader    = DataLoader(dataset,
+                            batch_size=self.batch_size,
+                            shuffle=True,
+                            generator=torch.Generator().manual_seed(seed))
+
+        optim = torch.optim.Adam(self.parameters(),
+                         lr=self.lr,
+                         weight_decay=self.weight_decay)
+
+        # -------- training --------
         self.train()
-        step_count = 0
-        epochs = 0
-        
-        # Create progress bar for steps
-        pbar = trange(self.steps, desc="Training PTS", disable=not verbose)
-        
-        while step_count < self.steps:
-            epoch_loss = 0.0
-            # Use tqdm for the dataloader if verbose
-            epoch_loader = tqdm(dataloader, desc=f"Epoch {epochs+1}", 
-                                leave=False, disable=not verbose)
-            
-            for batch_logits, batch_labels, batch_original_labels in epoch_loader:
-                if step_count >= self.steps:
+        pbar, step = trange(self.steps, disable=not verbose, desc="Training PTS"), 0
+        while step < self.steps:
+            for batch_logits, batch_labels, batch_orig in loader:
+                if step >= self.steps:
                     break
-                    
-                optimizer.zero_grad()
-                outputs, _ = self.forward(batch_logits)
-                
-                # Handle different loss function types
+
+                optim.zero_grad()
+                cal_probs, cal_logits = self.forward(batch_logits)
+
+                # choose correct input for every loss
                 if isinstance(self.loss_fn, SoftECE):
-                    # For SoftECE, pass logits and original class indices
-                    loss = self.loss_fn(outputs, batch_original_labels)
+                    loss = self.loss_fn(logits=cal_logits, labels=batch_orig)
                 elif isinstance(self.loss_fn, BrierLoss):
-                    # For BrierLoss, pass logits and targets as keyword arguments
-                    loss = self.loss_fn(logits=outputs, labels=batch_labels)
+                    loss = self.loss_fn(logits=cal_logits, labels=batch_labels)
                 elif isinstance(self.loss_fn, (FocalLoss, LabelSmoothingLoss)):
-                    # For FocalLoss and LabelSmoothingLoss, pass softmaxes and labels
-                    loss = self.loss_fn(softmaxes=outputs, labels=batch_labels)
+                    loss = self.loss_fn(softmaxes=cal_probs, labels=batch_labels)
                 else:
-                    # For other loss functions (CrossEntropyLoss, MSELoss), pass outputs and targets directly
-                    loss = self.loss_fn(outputs, batch_labels)
-                
+                    # *** HERE: MSE gets probabilities, CE gets logits ***
+                    loss_in = cal_probs if isinstance(self.loss_fn, nn.MSELoss) else cal_logits
+                    loss    = self.loss_fn(loss_in, batch_labels)
+
                 loss.backward()
-                optimizer.step()
-                epoch_loss += loss.item() * batch_logits.size(0)
-                step_count += 1
-                
-                # Update the main progress bar
+                optim.step()
+
+                step += 1
                 pbar.update(1)
-                pbar.set_postfix({"loss": f"{loss.item():.4f}"})
-                
-                if step_count >= self.steps:
-                    break
-            
-            epochs += 1
-            avg_loss = epoch_loss / len(dataset)
-            if verbose and epochs % 10 == 0:
-                print(f"Completed epoch {epochs}, Average Loss: {avg_loss:.4f}, Steps: {step_count}/{self.steps}")
-        
-        # Close the progress bar
+                pbar.set_postfix(loss=f"{loss.item():.4f}")
         pbar.close()
+
+
 
     def calibrate(self, test_logits, return_logits=False, **kwargs):
         """
