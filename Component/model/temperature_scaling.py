@@ -102,23 +102,77 @@ class TemperatureScalingCalibrator(Calibrator):
         loss_fn = self._get_loss_function(device, num_classes)
         
         # Get optimizer parameters from kwargs or use defaults
-        max_iter = kwargs.get('max_iter', 1000)
-        lr = kwargs.get('lr', 0.01)
+        max_iter = kwargs.get('max_iter', 2000)  # Increase max iterations
+        lr = kwargs.get('lr', 0.1)  # Increase learning rate
         
-        # Optimize the temperature w.r.t. the specified loss
-        optimizer = optim.LBFGS([self.temperature], lr=lr, max_iter=max_iter)
+        # Use Adam optimizer instead of LBFGS for more stable training
+        optimizer = optim.Adam([self.temperature], lr=lr, betas=(0.9, 0.999))
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=50, verbose=True)  # Increase patience
 
         def eval():
             optimizer.zero_grad()
             scaled_logits = self.temperature_scale(val_logits)
+            scaled_probs = F.softmax(scaled_logits, dim=1)
+            
+            # Convert labels to one-hot if needed
+            if len(val_labels.shape) == 1:
+                one_hot = torch.zeros(val_labels.size(0), scaled_probs.size(1), device=val_labels.device)
+                one_hot.scatter_(1, val_labels.unsqueeze(1), 1)
+                val_labels_one_hot = one_hot
+            else:
+                val_labels_one_hot = val_labels
             
             # Use the loss function with the appropriate parameters
-            loss = loss_fn(logits=scaled_logits, labels=val_labels)
+            if isinstance(loss_fn, SoftECE):
+                loss = loss_fn(logits=scaled_logits, labels=val_labels)
+            elif isinstance(loss_fn, BrierLoss):
+                loss = loss_fn(softmaxes=scaled_probs, labels=val_labels_one_hot)
+            elif isinstance(loss_fn, (FocalLoss, LabelSmoothingLoss)):
+                loss = loss_fn(softmaxes=scaled_probs, labels=val_labels_one_hot)
+            elif isinstance(loss_fn, CrossEntropyLoss):
+                loss = loss_fn(logits=scaled_logits, labels=val_labels)
+            elif isinstance(loss_fn, MSELoss):
+                diff = (scaled_probs - val_labels_one_hot).pow(2).sum(dim=1)
+                loss = diff.mean()
+            else:
+                # For any other loss function, pass logits and labels
+                loss = loss_fn(logits=scaled_logits, labels=val_labels)
             
             loss.backward()
             return loss
             
-        optimizer.step(eval)
+        # Training loop
+        best_loss = float('inf')
+        patience = 500  # Increase patience
+        patience_counter = 0
+        
+        print(f"Starting temperature scaling training with max_iter={max_iter}")
+        for i in range(max_iter):
+            loss = eval()
+            optimizer.step()
+            scheduler.step(loss)
+            
+            # Print progress every 10 iterations
+            if i % 10 == 0:
+                print(f"Iteration {i}/{max_iter}, Loss: {loss.item():.6f}, Temperature: {self.temperature.item():.4f}, LR: {optimizer.param_groups[0]['lr']:.6f}")
+            
+            # Early stopping
+            if loss.item() < best_loss:
+                best_loss = loss.item()
+                patience_counter = 0
+            else:
+                patience_counter += 1
+                if patience_counter >= patience:
+                    print(f"Early stopping at iteration {i} with best loss {best_loss:.6f}")
+                    break
+                    
+            # Ensure temperature stays positive
+            with torch.no_grad():
+                self.temperature.data.clamp_(min=1e-3)
+
+        print(f"Training completed after {i+1} iterations")
+        print(f"Final temperature: {self.temperature.item():.4f}")
+        print(f"Final loss: {loss.item():.6f}")
 
         return self.temperature.item()
 
