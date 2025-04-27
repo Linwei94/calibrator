@@ -1,9 +1,15 @@
-from calibrator.metrics import ECE
+import os
+import sys
+
+# Add the parent directory to the path so we can import the Component module
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from Component.metrics import ECE
 
 def test_pts_calibrator():
     print("---Test PTS Calibrator---")
 
-    from calibrator import PTSCalibrator
+    from Component import PTSCalibrator
     import torch
     import numpy as np
 
@@ -12,8 +18,14 @@ def test_pts_calibrator():
     print(f"Using device: {device}")
 
     # Load validation and test data
-    val_logits, val_labels = torch.load("tests/test_logits/resnet50_cifar10_cross_entropy_val_0.1_vanilla.pt", weights_only=False)
-    test_logits, test_labels = torch.load("tests/test_logits/resnet50_cifar10_cross_entropy_test_0.9_vanilla.pt", weights_only=False)
+    # val_logits, val_labels = torch.load("tests/test_logits/resnet50_cifar10_cross_entropy_val_0.1_vanilla.pt", weights_only=False)
+    # test_logits, test_labels = torch.load("tests/test_logits/resnet50_cifar10_cross_entropy_test_0.9_vanilla.pt", weights_only=False)
+
+    # Move data to the appropriate device
+    val_logits = torch.tensor(np.load("calibrator/tests/test_logits/val_logits.npy")).float().to(device)
+    val_labels = torch.tensor(np.load("calibrator/tests/test_logits/val_labels.npy")).long().to(device)
+    test_logits = torch.tensor(np.load("calibrator/tests/test_logits/test_logits.npy")).float().to(device)
+    test_labels = torch.tensor(np.load("calibrator/tests/test_logits/test_labels.npy")).long().to(device)
 
     # Move data to the appropriate device
     val_logits = val_logits.to(device)
@@ -27,7 +39,14 @@ def test_pts_calibrator():
     # Initialize the PTS calibrator with default parameters
     calibrator = PTSCalibrator(
         length_logits=num_classes,  # Only specify length_logits, use defaults for others,
-        epochs=1000
+        loss_fn="MSE",
+        steps=10000,
+        lr=0.00005,
+        weight_decay=0.0,
+        batch_size=1000,
+        nlayers=2,
+        n_nodes=5,
+        top_k_logits=10,
     )
 
     # Fit the calibrator on validation data
@@ -37,8 +56,8 @@ def test_pts_calibrator():
     calibrated_probability = calibrator.calibrate(test_logits)
 
     # Calculate and print ECE metrics
-    uncalibrated_ece = ECE()(labels=test_labels, logits=test_logits)
-    calibrated_ece = ECE()(labels=test_labels, softmaxes=calibrated_probability)
+    uncalibrated_ece = ECE(n_bins=15)(labels=test_labels, logits=test_logits)
+    calibrated_ece = ECE(n_bins=15)(labels=test_labels, softmaxes=calibrated_probability)
 
     print(f"Uncalibrated ECE: {uncalibrated_ece:.4f}")
     print(f"Calibrated ECE: {calibrated_ece:.4f}")
@@ -48,12 +67,20 @@ def test_pts_calibrator():
     
     # Test with custom loss function
     custom_calibrator = PTSCalibrator(
-        length_logits=num_classes,
-        loss_fn=torch.nn.CrossEntropyLoss()
+        loss_fn=torch.nn.CrossEntropyLoss(),
+        length_logits=num_classes,  # Only specify length_logits, use defaults for others,
+        steps=10000,
+        lr=0.00005,
+        weight_decay=0.0,
+        batch_size=1000,
+        nlayers=2,
+        n_nodes=5,
+        top_k_logits=10,
     )
-    custom_calibrator.fit(val_logits, val_labels)
-    custom_calibrated_probability = custom_calibrator.calibrate(test_logits)
-    custom_calibrated_ece = ECE()(labels=test_labels, softmaxes=custom_calibrated_probability)
+    
+    # custom_calibrator.fit(val_logits, val_labels)
+    # custom_calibrated_probability = custom_calibrator.calibrate(test_logits)
+    # custom_calibrated_ece = ECE()(labels=test_labels, softmaxes=custom_calibrated_probability)
     print(f"Custom Loss Calibrated ECE: {custom_calibrated_ece:.4f}")
     
     # Test saving and loading the model

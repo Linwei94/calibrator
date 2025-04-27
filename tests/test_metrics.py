@@ -1,8 +1,14 @@
+import os
+import sys
+
+# Add the parent directory to the path so we can import the Component module
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 def test_metrics():
     print("---Test Metrics---")
 
     import torch
-    from calibrator.metrics import ECE, AdaptiveECE, ClasswiseECE, NLL, Accuracy
+    from Component.metrics import ECE, AdaptiveECE, ClasswiseECE, NLL, Accuracy
 
     val_logits, val_labels = torch.load("tests/test_logits/resnet50_cifar10_cross_entropy_val_0.1_vanilla.pt", weights_only=False)
     test_logits, test_labels = torch.load("tests/test_logits/resnet50_cifar10_cross_entropy_test_0.9_vanilla.pt", weights_only=False)

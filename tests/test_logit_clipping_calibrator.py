@@ -1,9 +1,15 @@
+import os
+import sys
+
+# Add the parent directory to the path so we can import the Component module
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 def test_lc():
     print("---Test Logit Clipping---")
 
-    from calibrator import LogitClippingCalibrator
+    from Component import LogitClippingCalibrator
     import torch
-    from calibrator.metrics import ECE, AdaptiveECE, ClasswiseECE
+    from Component.metrics import ECE, AdaptiveECE, ClasswiseECE
     from .test_utils.cifar10 import get_train_valid_loader, get_test_loader
     from .test_utils.resnet import resnet50
 

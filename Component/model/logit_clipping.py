@@ -6,7 +6,7 @@ import numpy as np
 from torch import nn, optim
 from torch.nn import functional as F
 
-from .metrics import ECE, Accuracy
+from ..metrics import ECE, Accuracy
 from .calibrator import Calibrator
 
 class LogitClippingCalibrator(Calibrator):
