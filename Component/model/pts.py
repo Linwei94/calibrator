@@ -170,7 +170,8 @@ class PTSCalibrator(Calibrator):
 
         t           = self.temp_branch(topk)     # (B,1)
         temperature = torch.abs(t)               # ← paper
-        temperature = torch.clamp(temperature, 1e-12, 1e12)
+        # temperature = torch.clamp(temperature, 1e-12, 1e12)
+        temperature = torch.clamp(temperature, 0.1, 10)
 
         adjusted_logits = input_logits / temperature
         calibrated_probs= F.softmax(adjusted_logits, dim=1)
@@ -179,7 +180,7 @@ class PTSCalibrator(Calibrator):
 
     def fit(self, val_logits, val_labels, **kwargs):
         """Tune (train) the PTS model."""
-        clip    = kwargs.get('clip',      1e2)
+        clip    = kwargs.get('clip',      20)
         seed    = kwargs.get('seed',      self.seed)
         verbose = kwargs.get('verbose',   True)
 
@@ -271,7 +272,7 @@ class PTSCalibrator(Calibrator):
             If return_logits is False, returns calibrated probability distribution (torch.Tensor)
             If return_logits is True, returns calibrated logits (torch.Tensor)
         """
-        clip = kwargs.get('clip', 1e2)
+        clip = kwargs.get('clip', 20)
         
         if not torch.is_tensor(test_logits):
             test_logits = torch.tensor(test_logits, dtype=torch.float32)

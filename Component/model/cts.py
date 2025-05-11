@@ -1,3 +1,4 @@
+# Network Calibration by Class-based Temperature Scaling
 import torch
 import torch.nn.functional as F
 import numpy as np
@@ -89,6 +90,15 @@ class CTSCalibrator(Calibrator):
             ts_loss: str = "nll",
             **kwargs) -> Dict[str, float]:
         
+        # 选择设备，优先使用GPU
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.to(device)
+        
+        # 确保输入张量在正确的设备上
+        val_logits = val_logits.to(device)
+        val_labels = val_labels.to(device)
+        
+        print(f"Using device: {device}")
         print("logit range  :", val_logits.min().item(), val_logits.max().item())
         print("first row    :", val_logits[0][:10])
 
@@ -98,12 +108,11 @@ class CTSCalibrator(Calibrator):
         print("raw accuracy :", raw_acc)
 
         logger.info("CTS fit started")
-        device = val_logits.device
-        self.to(device)
 
         # ---------- 1-D TS 初始化 ----------
         print("TS loss type:", ts_loss)
         ts = TemperatureScalingCalibrator(loss_type=ts_loss)
+        ts.to(device)  # 确保TS模型也在GPU上
         if "loss_fn" in kwargs:
             ts.loss_fn = kwargs["loss_fn"]
         ts.fit(val_logits, val_labels)
@@ -163,10 +172,15 @@ class CTSCalibrator(Calibrator):
 
     # ------------------------------------------------------------------ #
     def calibrate(self, test_logits, return_logits=False, **_):
+        # 选择设备，优先使用GPU
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.to(device)
+        
         if not torch.is_tensor(test_logits):
-            test_logits = torch.tensor(test_logits,
-                                       dtype=torch.float32,
-                                       device=self.T.device)
+            test_logits = torch.tensor(test_logits, dtype=torch.float32, device=device)
+        else:
+            test_logits = test_logits.to(device)
+            
         logits = self.forward(test_logits)
         return logits if return_logits else F.softmax(logits, dim=1)
 
@@ -178,9 +192,10 @@ class CTSCalibrator(Calibrator):
         logger.info("CTS model saved to %s/cts_model.pth", path)
 
     def load(self, path="./"):
-        self.load_state_dict(torch.load(f"{path}/cts_model.pth",
-                                        map_location="cpu"))
-        logger.info("CTS model loaded from %s/cts_model.pth", path)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.load_state_dict(torch.load(f"{path}/cts_model.pth", map_location=device))
+        self.to(device)
+        logger.info("CTS model loaded from %s/cts_model.pth and moved to %s", path, device)
 
     def compute_all_metrics(self, logits: torch.Tensor, labels: torch.Tensor) -> Dict[str, float]:
         """
@@ -193,7 +208,14 @@ class CTSCalibrator(Calibrator):
         Returns:
             Dict[str, float]: Dictionary containing all metric values
         """
-        device = logits.device
+        # 选择设备，优先使用GPU
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.to(device)
+        
+        # 确保输入张量在正确的设备上
+        logits = logits.to(device)
+        labels = labels.to(device)
+        
         probs = F.softmax(logits / self.T, dim=1)
         
         results = {}
