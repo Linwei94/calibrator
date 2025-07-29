@@ -149,3 +149,51 @@ def get_all_metrics(
         'cece': metrics.get('classwise_ece', None),
         'nll': metrics.get('nll', None)
     }
+
+def get_all_metrics_multi_bins(
+    labels: torch.Tensor, 
+    logits: Optional[torch.Tensor] = None, 
+    probs: Optional[torch.Tensor] = None,
+    bins_list: list = [5, 10, 15, 20, 25, 30]
+) -> Dict[str, float]:
+    """
+    Evaluate metrics across multiple bin sizes for ECE calculation.
+    
+    Args:
+        labels (torch.Tensor): Target labels
+        logits (torch.Tensor, optional): Input logits before softmax
+        probs (torch.Tensor, optional): Probability distributions (softmax outputs)
+        bins_list (list): List of bin sizes to evaluate. Defaults to [5, 10, 15, 20, 25, 30].
+            
+    Returns:
+        Dict[str, float]: Dictionary with metrics for each bin size and base metrics:
+        {
+            'ece_5': float, 'ece_10': float, ..., 'ece_30': float,
+            'adaece_5': float, 'adaece_10': float, ..., 'adaece_30': float,
+            'cece_5': float, 'cece_10': float, ..., 'cece_30': float,
+            'accuracy': float,  # computed once with first bin size
+            'nll': float       # computed once with first bin size
+        }
+    """
+    results = {}
+    
+    # Evaluate for each bin size
+    for i, n_bins in enumerate(bins_list):
+        bin_metrics = get_all_metrics(
+            labels=labels,
+            logits=logits,
+            probs=probs,
+            n_bins=n_bins
+        )
+        
+        # Store ECE and related metrics with bin suffix
+        results[f'ece_{n_bins}'] = bin_metrics['ece']
+        results[f'adaece_{n_bins}'] = bin_metrics['adaece']
+        results[f'cece_{n_bins}'] = bin_metrics['cece']
+        
+        # For the first bin size, also store the base metrics (accuracy and nll don't depend on bins)
+        if i == 0:
+            results['accuracy'] = bin_metrics['accuracy']
+            results['nll'] = bin_metrics['nll']
+    
+    return results
