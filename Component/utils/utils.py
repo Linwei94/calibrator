@@ -11,7 +11,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import metric implementations
 from ..metrics import (
-    ECE, AdaptiveECE, ClasswiseECE, NLL, Accuracy
+    ECE, AdaptiveECE, ClasswiseECE, NLL, Accuracy, ECEDebiased, ECESweep
 )
 
 def compute_ece(probs, labels, n_bins=15):
@@ -83,6 +83,8 @@ def compute_all_metrics(
         'ece': ECE(n_bins=n_bins),
         'adaptive_ece': AdaptiveECE(n_bins=n_bins),
         'classwise_ece': ClasswiseECE(n_bins=n_bins),
+        'ece_debiased': ECEDebiased(n_bins=n_bins),
+        'ece_sweep': ECESweep(),
         'nll': NLL(),
         'accuracy': Accuracy()
     }
@@ -99,7 +101,7 @@ def compute_all_metrics(
                     value = metric(logits=logits, labels=labels)
                 else:
                     value = metric(softmaxes=probs, labels=labels)
-            elif name in ['ece', 'adaptive_ece', 'classwise_ece', 'accuracy']:
+            elif name in ['ece', 'adaptive_ece', 'classwise_ece', 'ece_debiased', 'ece_sweep', 'accuracy']:
                 value = metric(softmaxes=probs, labels=labels)
             else:
                 logger.warning(f"Unknown metric type: {name}")
@@ -132,13 +134,15 @@ def get_all_metrics(
         n_bins (int, optional): Number of bins for ECE calculation. Defaults to 15.
             
     Returns:
-        Dict[str, float]: Dictionary containing the 5 standard metrics:
+        Dict[str, float]: Dictionary containing the 7 standard metrics:
         {
             'ece': float,
             'accuracy': float,
             'adaece': float,
             'cece': float,
-            'nll': float
+            'nll': float,
+            'ece_debiased': float,
+            'ece_sweep': float
         }
     """
     metrics = compute_all_metrics(labels=labels, logits=logits, probs=probs, n_bins=n_bins)
@@ -147,7 +151,9 @@ def get_all_metrics(
         'accuracy': metrics.get('accuracy', None),
         'adaece': metrics.get('adaptive_ece', None),
         'cece': metrics.get('classwise_ece', None),
-        'nll': metrics.get('nll', None)
+        'nll': metrics.get('nll', None),
+        'ece_debiased': metrics.get('ece_debiased', None),
+        'ece_sweep': metrics.get('ece_sweep', None)
     }
 
 def get_all_metrics_multi_bins(
@@ -171,8 +177,10 @@ def get_all_metrics_multi_bins(
             'ece_5': float, 'ece_10': float, ..., 'ece_30': float,
             'adaece_5': float, 'adaece_10': float, ..., 'adaece_30': float,
             'cece_5': float, 'cece_10': float, ..., 'cece_30': float,
+            'ece_debiased_5': float, 'ece_debiased_10': float, ..., 'ece_debiased_30': float,
             'accuracy': float,  # computed once with first bin size
-            'nll': float       # computed once with first bin size
+            'nll': float,       # computed once with first bin size
+            'ece_sweep': float  # computed once (adaptive bin selection)
         }
     """
     results = {}
@@ -190,10 +198,12 @@ def get_all_metrics_multi_bins(
         results[f'ece_{n_bins}'] = bin_metrics['ece']
         results[f'adaece_{n_bins}'] = bin_metrics['adaece']
         results[f'cece_{n_bins}'] = bin_metrics['cece']
+        results[f'ece_debiased_{n_bins}'] = bin_metrics['ece_debiased']
         
-        # For the first bin size, also store the base metrics (accuracy and nll don't depend on bins)
+        # For the first bin size, also store the base metrics (accuracy, nll, and ece_sweep don't depend on bins)
         if i == 0:
             results['accuracy'] = bin_metrics['accuracy']
             results['nll'] = bin_metrics['nll']
+            results['ece_sweep'] = bin_metrics['ece_sweep']
     
     return results

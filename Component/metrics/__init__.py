@@ -11,3 +11,5 @@ from .label_smoothing import LabelSmoothingLoss
 from .cross_entropy import CrossEntropyLoss
 from .mse import MSELoss
 from .soft_ece import SoftECE
+from .ece_debiased import ECEDebiased
+from .ece_sweep import ECESweep
