@@ -9,3 +9,4 @@ from .model.histogram_binning import *
 from .model.bbq import *
 from .model.vector_scaling import *
 from .model.group_calibration import *
+from .model.procal import *
