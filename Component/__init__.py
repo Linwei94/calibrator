@@ -5,3 +5,7 @@ from .model.calibrator import *
 from .model.pts import *
 from .model.cts import *
 from .model.ets import *
+from .model.histogram_binning import *
+from .model.bbq import *
+from .model.vector_scaling import *
+from .model.group_calibration import *

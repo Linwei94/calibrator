@@ -155,9 +155,15 @@ class HistogramBinningCalibrator(Calibrator):
                     calibrated_probs[i] = torch.ones(num_classes, device=device) / num_classes
             
             if return_logits:
-                # Convert back to logits
-                calibrated_probs = torch.clamp(calibrated_probs, min=1e-8, max=1-1e-8)
-                return torch.log(calibrated_probs)
+                # Convert back to logits with numerical stability
+                calibrated_probs = torch.clamp(calibrated_probs, min=1e-7, max=1-1e-7)
+                # Normalize again to ensure sum=1
+                calibrated_probs = calibrated_probs / torch.sum(calibrated_probs, dim=1, keepdim=True)
+                # Convert to logits using log
+                logits = torch.log(calibrated_probs)
+                # Replace any remaining inf/nan with reasonable values
+                logits = torch.where(torch.isfinite(logits), logits, torch.tensor(-10.0, device=logits.device))
+                return logits
             else:
                 return calibrated_probs
         else:
