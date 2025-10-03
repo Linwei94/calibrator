@@ -14,6 +14,9 @@ from ..metrics import (
     BrierLoss, FocalLoss, LabelSmoothingLoss, 
     CrossEntropyLoss, MSELoss, SoftECE
 )
+from ..metrics.WeightedSoftECE import WeightedSoftECE
+from ..metrics.SmoothSoftECE import SmoothSoftECE
+from ..metrics.GapIndexedSoftECE import GapIndexedSoftECE
 
 # ------------------------------------------------------------------ #
 # logging setup
@@ -44,6 +47,9 @@ class PTSCalibrator(Calibrator):
                 - 'mse' or 'mean_squared_error': Mean Squared Error
                 - 'ce' or 'cross_entropy': Cross Entropy
                 - 'soft_ece': Soft Expected Calibration Error
+                - 'weighted_soft_ece': Weighted Soft Expected Calibration Error
+                - 'smooth_soft_ece': Smooth Soft Expected Calibration Error
+                - 'gap_indexed_soft_ece': Gap Indexed Soft Expected Calibration Error
                 - 'brier': Brier Score
                 - 'l1' or 'mean_absolute_error': L1 Loss
                 - 'focal': Focal Loss (with gamma=2.0 by default)
@@ -102,7 +108,10 @@ class PTSCalibrator(Calibrator):
             'label_smoothing': LabelSmoothingLoss(),
             'cross_entropy': CrossEntropyLoss(),
             'mse': MSELoss(),
-            'soft_ece': SoftECE()
+            'soft_ece': SoftECE(),
+            'weighted_soft_ece': WeightedSoftECE(),
+            'smooth_soft_ece': SmoothSoftECE(),
+            'gap_indexed_soft_ece': GapIndexedSoftECE()
         }
         
         logger.info("PTSCalibrator initialised: steps=%d  lr=%.6f  batch_size=%d  nlayers=%d  n_nodes=%d",
@@ -133,6 +142,12 @@ class PTSCalibrator(Calibrator):
                 return nn.L1Loss()
             elif loss_fn_lower in {"soft_ece", "softece"}:
                 return SoftECE()
+            elif loss_fn_lower in {"weighted_soft_ece", "weightedsoftece"}:
+                return WeightedSoftECE()
+            elif loss_fn_lower in {"smooth_soft_ece", "smoothsoftece"}:
+                return SmoothSoftECE()
+            elif loss_fn_lower in {"gap_indexed_soft_ece", "gapindexedsoftece"}:
+                return GapIndexedSoftECE()
             elif loss_fn_lower in {"brier", "brier_score"}:
                 return BrierLoss()
             elif loss_fn_lower in {"focal", "focal_loss", "fl"}:
@@ -238,7 +253,7 @@ class PTSCalibrator(Calibrator):
                 cal_probs, cal_logits = self.forward(batch_logits)
 
                 # choose correct input for every loss
-                if isinstance(self.loss_fn, SoftECE):
+                if isinstance(self.loss_fn, (SoftECE, WeightedSoftECE, SmoothSoftECE, GapIndexedSoftECE)):
                     loss = self.loss_fn(logits=cal_logits, labels=batch_orig)
                 elif isinstance(self.loss_fn, BrierLoss):
                     loss = self.loss_fn(logits=cal_logits, labels=batch_labels)

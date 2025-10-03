@@ -8,6 +8,9 @@ from ..metrics import (
     BrierLoss, FocalLoss, LabelSmoothingLoss, 
     CrossEntropyLoss, MSELoss, SoftECE
 )
+from ..metrics.WeightedSoftECE import WeightedSoftECE
+from ..metrics.SmoothSoftECE import SmoothSoftECE
+from ..metrics.GapIndexedSoftECE import GapIndexedSoftECE
 
 class TemperatureScalingCalibrator(Calibrator):
     def __init__(self, loss_type='nll'):
@@ -24,6 +27,9 @@ class TemperatureScalingCalibrator(Calibrator):
                 - 'focal' (focal loss with gamma=2.0)
                 - 'ls' (label smoothing with alpha=0.1)
                 - 'soft_ece' (soft expected calibration error)
+                - 'weighted_soft_ece' (weighted soft expected calibration error)
+                - 'smooth_soft_ece' (smooth soft expected calibration error)
+                - 'gap_indexed_soft_ece' (gap indexed soft expected calibration error)
         """
         super(TemperatureScalingCalibrator, self).__init__()
         self.temperature = nn.Parameter(torch.ones(1))
@@ -72,8 +78,14 @@ class TemperatureScalingCalibrator(Calibrator):
             return LabelSmoothingLoss().to(device)
         elif loss_type_lower in ['soft_ece', 'softece']:
             return SoftECE().to(device)
+        elif loss_type_lower in ['weighted_soft_ece', 'weightedsoftece']:
+            return WeightedSoftECE().to(device)
+        elif loss_type_lower in ['smooth_soft_ece', 'smoothsoftece']:
+            return SmoothSoftECE().to(device)
+        elif loss_type_lower in ['gap_indexed_soft_ece', 'gapindexedsoftece']:
+            return GapIndexedSoftECE().to(device)
         else:
-            raise ValueError(f"Unsupported loss type: {self.loss_type}. Options are 'nll', 'ce', 'ece', 'brier', 'mse', 'focal', 'ls', or 'soft_ece'.")
+            raise ValueError(f"Unsupported loss type: {self.loss_type}. Options are 'nll', 'ce', 'ece', 'brier', 'mse', 'focal', 'ls', 'soft_ece', 'weighted_soft_ece', 'smooth_soft_ece', or 'gap_indexed_soft_ece'.")
 
     def fit(self, val_logits, val_labels, **kwargs):
         """
@@ -123,7 +135,7 @@ class TemperatureScalingCalibrator(Calibrator):
                 val_labels_one_hot = val_labels
             
             # Use the loss function with the appropriate parameters
-            if isinstance(loss_fn, SoftECE):
+            if isinstance(loss_fn, (SoftECE, WeightedSoftECE, SmoothSoftECE, GapIndexedSoftECE)):
                 loss = loss_fn(logits=scaled_logits, labels=val_labels)
             elif isinstance(loss_fn, BrierLoss):
                 loss = loss_fn(softmaxes=scaled_probs, labels=val_labels_one_hot)
