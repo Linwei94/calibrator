@@ -10,3 +10,5 @@ from .model.bbq import *
 from .model.vector_scaling import *
 from .model.group_calibration import *
 from .model.procal import *
+from .model.density_aware_calibration import *
+

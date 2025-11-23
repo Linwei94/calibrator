@@ -6,6 +6,7 @@ from .kde_ece_loss import KDEECELoss
 from .nll import NLL
 from .accuracy import Accuracy
 from .brier import BrierLoss
+from .rbs import RBS
 from .focal import FocalLoss
 from .label_smoothing import LabelSmoothingLoss
 from .cross_entropy import CrossEntropyLoss

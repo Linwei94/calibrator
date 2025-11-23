@@ -23,7 +23,7 @@ class SmoothSoftECE(nn.Module):
         )
 
     def _phi(self, r: torch.Tensor) -> torch.Tensor:
-        print(f"mode: {self.mode}")
+        # print(f"mode: {self.mode}")
         if self.mode == "softabs":
             return torch.sqrt(r*r + self.delta*self.delta)   # ≥ |r|
         # Huber
